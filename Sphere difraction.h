@@ -1,0 +1,11 @@
+#pragma once
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <limits>
+#include <complex>
+#include <numbers>
+#include <cassert>
+#include <armadillo>
+
+using d_compl = std::complex<double>;
