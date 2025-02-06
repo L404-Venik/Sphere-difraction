@@ -24,7 +24,12 @@ d_compl normalized_hancel_derivative(char order, double n, double arg)
 	d_compl one = normalized_bessel_derivative(n, arg);
 	d_compl two = normalized_neumann_derivative(n, arg);
 
-	result = normalized_bessel_derivative(n, arg) + i * normalized_neumann_derivative(n, arg);
+	if (order == 1)
+		result = normalized_bessel_derivative(n, arg) + i * normalized_neumann_derivative(n, arg);
+	else if (order == 2)
+		result = normalized_bessel_derivative(n, arg) - i * normalized_neumann_derivative(n, arg);
+	else
+		assert(false); // wrong order
 
 	return result;
 }
@@ -76,13 +81,41 @@ double legendre_derivative(double n, double arg)
 	return result;
 }
 
+void writeComplexVectorsToFile(const std::string& filename,
+	const std::vector<std::complex<double>>& v1,
+	const std::vector<std::complex<double>>& v2,
+	const std::vector<std::complex<double>>& v3,
+	int precision = 6) {
+	std::ofstream file(filename);
+	if (!file) {
+		std::cerr << "Ошибка открытия файла!" << std::endl;
+		return;
+	}
+
+	file << std::fixed << std::setprecision(precision);
+	size_t maxSize = std::max({ v1.size(), v2.size(), v3.size() });
+
+	for (size_t i = 0; i < maxSize; ++i) {
+		if (i < v1.size()) file << v1[i].real() << "+" << v1[i].imag() << "i";
+		file << "\t";
+		if (i < v2.size()) file << v2[i].real() << "+" << v2[i].imag() << "i";
+		file << "\t";
+		if (i < v3.size()) file << v3[i].real() << "+" << v3[i].imag() << "i";
+		file << "\n";
+	}
+
+	file.close();
+}
+
+#define MatrixType arma::cx_dmat
+
 void calculate_electric_field(std::vector<double>& r, std::vector<d_compl>& eps_compl, double lambda)
 {
 	std::vector<d_compl> vE_r;
 	std::vector<d_compl> vE_theta;
 	std::vector<d_compl> vE_phi;
 	int layers_number = r.size();
-	int N = 10;
+	int N = 100;
 	double k = 2 * PI / lambda; // wave number
 
 	double x = r.back() * 1.1;
@@ -94,7 +127,7 @@ void calculate_electric_field(std::vector<double>& r, std::vector<d_compl>& eps_
 		eps.push_back(e.real());
 	eps.push_back(1.0);
 
-	for (theta = 0; theta <= PI; theta += (PI / 36.0))
+	for (theta = 0; theta < PI; theta += (PI / 36.0))
 	{
 		// electric field components
 		d_compl E_r = 0;
@@ -102,14 +135,14 @@ void calculate_electric_field(std::vector<double>& r, std::vector<d_compl>& eps_
 		d_compl E_phi = 0;
 
 		// Define a 4D vectors A and B
-		std::vector<std::vector<arma::cx_dmat>> A_e(layers_number, std::vector<arma::cx_dmat>(N, arma::cx_dmat(2, 2, arma::fill::none)));
-		std::vector<std::vector<arma::cx_dmat>> A_m(layers_number, std::vector<arma::cx_dmat>(N, arma::cx_dmat(2, 2, arma::fill::none)));
-		std::vector<std::vector<arma::cx_dmat>> B_e(layers_number, std::vector<arma::cx_dmat>(N, arma::cx_dmat(2, 2, arma::fill::none)));
-		std::vector<std::vector<arma::cx_dmat>> B_m(layers_number, std::vector<arma::cx_dmat>(N, arma::cx_dmat(2, 2, arma::fill::none)));
-		std::vector<std::vector<arma::cx_dmat>> vT_e(layers_number, std::vector<arma::cx_dmat>(N, arma::cx_dmat(2, 2, arma::fill::none)));
-		std::vector<std::vector<arma::cx_dmat>> vT_m(layers_number, std::vector<arma::cx_dmat>(N, arma::cx_dmat(2, 2, arma::fill::none)));
-		std::vector<arma::cx_dmat> T_e(N, arma::cx_dmat(2, 2, arma::fill::ones)); // ?
-		std::vector<arma::cx_dmat> T_m(N, arma::cx_dmat(2, 2, arma::fill::ones)); // ?
+		std::vector<std::vector<MatrixType>> A_e(layers_number, std::vector<MatrixType>(N, MatrixType(2, 2, arma::fill::none)));
+		std::vector<std::vector<MatrixType>> A_m(layers_number, std::vector<MatrixType>(N, MatrixType(2, 2, arma::fill::none)));
+		std::vector<std::vector<MatrixType>> B_e(layers_number, std::vector<MatrixType>(N, MatrixType(2, 2, arma::fill::none)));
+		std::vector<std::vector<MatrixType>> B_m(layers_number, std::vector<MatrixType>(N, MatrixType(2, 2, arma::fill::none)));
+		std::vector<std::vector<MatrixType>> vT_e(layers_number, std::vector<MatrixType>(N, MatrixType(2, 2, arma::fill::none)));
+		std::vector<std::vector<MatrixType>> vT_m(layers_number, std::vector<MatrixType>(N, MatrixType(2, 2, arma::fill::none)));
+		std::vector<MatrixType> T_e(N, MatrixType(2, 2, arma::fill::ones)); // ?
+		std::vector<MatrixType> T_m(N, MatrixType(2, 2, arma::fill::ones)); // ?
 
 		for (int j = 0; j < layers_number; j++)
 		{
@@ -124,7 +157,7 @@ void calculate_electric_field(std::vector<double>& r, std::vector<d_compl>& eps_
 
 				A_e[j][n](0, 0) = eps[j] * A_m[j][n](0, 0);
 				A_e[j][n](0, 1) = eps[j] * A_m[j][n](0, 1);
-				A_e[j][n](1, 0) = A_m[j][n](0, 1);
+				A_e[j][n](1, 0) = A_m[j][n](1, 0);
 				A_e[j][n](1, 1) = A_m[j][n](1, 1);
 
 
@@ -132,21 +165,21 @@ void calculate_electric_field(std::vector<double>& r, std::vector<d_compl>& eps_
 
 				B_m[j][n](0, 0) = std::sph_bessel(n, arg_B);
 				B_m[j][n](0, 1) = spherical_hankel(1, n, arg_B);
-				B_m[j][n](1, 0) = sqrt(eps[j + 1]) * normalized_bessel_derivative(n, arg_A); // with derivative of Bessel function
+				B_m[j][n](1, 0) = sqrt(eps[j + 1]) * normalized_bessel_derivative(n, arg_B); // with derivative of Bessel function
 				B_m[j][n](1, 1) = sqrt(eps[j + 1]) * normalized_hancel_derivative(1, n, arg_B); // with derivative of Hankel function
 
 				B_e[j][n](0, 0) = eps[j + 1] * B_m[j][n](0, 0);
 				B_e[j][n](0, 1) = eps[j + 1] * B_m[j][n](0, 1);
-				B_e[j][n](1, 0) = B_m[j][n](0, 1);
+				B_e[j][n](1, 0) = B_m[j][n](1, 0);
 				B_e[j][n](1, 1) = B_m[j][n](1, 1);
 
-				arma::cx_dmat B_m_inv = arma::inv(B_m[j][n]);
+				MatrixType B_m_inv = arma::inv(B_m[j][n]);
 				vT_m[j][n] = B_m_inv * A_m[j][n];
-				T_m[n] *= B_m_inv * A_m[j][n];
+				T_m[n] *= vT_m[j][n];
 
-				arma::cx_dmat B_e_inv = arma::inv(B_e[j][n]);
+				MatrixType B_e_inv = arma::inv(B_e[j][n]);
 				vT_e[j][n] = B_e_inv * A_e[j][n];
-				T_e[n] *= B_e_inv * A_e[j][n];
+				T_e[n] *= vT_e[j][n];
 			}
 		}
 
@@ -154,9 +187,9 @@ void calculate_electric_field(std::vector<double>& r, std::vector<d_compl>& eps_
 		double d_1 = 0;
 		double c_1 = 0;
 		d_compl R_e = 1, R_m = 1;
-		for (double n = 1; n < N; n++)
+		for (int n = 1; n < N; n++)
 		{
-			std::complex<double> c_n = std::pow(i, (n - 1)) / (k * k) * (2 * n + 1) / (n * (n + 1));
+			std::complex<double> c_n = std::pow(i, (n - 1)) / (k * k) * (2.0 * n + 1) / (n * (n + 1.0));
 
 			std::complex<double> d_e_n = c_n * (T_e[n](1, 0) + T_e[n](1, 1) * R_e) / (T_e[n](0, 0) + T_e[n](0, 1) * R_e);
 			std::complex<double> d_m_n = c_n * (T_m[n](1, 0) + T_m[n](1, 1) * R_m) / (T_m[n](0, 0) + T_m[n](0, 1) * R_m);
@@ -188,8 +221,8 @@ void calculate_electric_field(std::vector<double>& r, std::vector<d_compl>& eps_
 		vE_phi.push_back(E_phi);
 	}
 
-
-	assert(false);
+	writeComplexVectorsToFile("results.txt", vE_r, vE_theta, vE_phi);
+	//assert(false);
 }
 
 int main()
