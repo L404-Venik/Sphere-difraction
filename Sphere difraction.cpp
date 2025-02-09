@@ -1,111 +1,10 @@
 ﻿#include "Sphere difraction.h"
 
+//std::complex<double> i(0.0, 1.0);
+//double PI = std::numbers::pi_v<double>;
 
-// Hackel
-std::complex<double> spherical_hankel(char order, double nu, double x)
-{
-	double J = std::sph_bessel(nu, x);
-	double N = std::sph_neumann(nu, x);
-
-	std::complex<double> result;
-	if (order == 1)
-		result = J + i * N;
-	else if (order == 2)
-		result = J - i * N;
-	else
-		assert(false); // wrong order
-
-	return result;
-}
-
-d_compl normalized_hancel_derivative(char order, double n, double arg)
-{
-	d_compl result;
-	d_compl one = normalized_bessel_derivative(n, arg);
-	d_compl two = normalized_neumann_derivative(n, arg);
-
-	if (order == 1)
-		result = normalized_bessel_derivative(n, arg) + i * normalized_neumann_derivative(n, arg);
-	else if (order == 2)
-		result = normalized_bessel_derivative(n, arg) - i * normalized_neumann_derivative(n, arg);
-	else
-		assert(false); // wrong order
-
-	return result;
-}
-
-// Bessel
-double bessel_derivative(double n, double arg)
-{
-	return (1.0 / 2.0) * (std::cyl_bessel_j(n - 1, arg) - std::cyl_bessel_j(n + 1, arg));
-}
-
-double normalized_bessel_derivative(double n, double arg)
-{
-	double result = -1.0 / 2.0 * std::sqrt(PI / (2 * std::pow(arg, 3))) * std::cyl_bessel_j(n + 1.0 / 2.0, arg)
-		+ std::sqrt(PI / (2 * arg)) * bessel_derivative(n + 1.0 / 2.0, arg);
-	return result;
-}
-
-// Neumann
-double neumann_derivative(double n, double arg)
-{
-	double result;
-
-	result = bessel_derivative(n, arg) * cos(n * PI) - bessel_derivative(-n, arg);
-	result /= sin(n * PI);
-
-	return result;
-}
-
-double normalized_neumann_derivative(double n, double arg)
-{
-	double result;
-
-	result = -1.0 / 2.0 * std::sqrt(PI / (2 * std::pow(arg, 3))) * std::cyl_neumann(n + 1.0 / 2.0, arg)
-		+ std::sqrt(PI / (2 * arg)) * neumann_derivative(n + 1.0 / 2.0, arg);
-
-	return result;
-}
-
-
-// Legendre
-double legendre_derivative(double n, double arg)
-{
-	double result;
-	double P1 = std::legendre(n - 1, arg);
-	double P2 = std::legendre(n, arg);
-
-	result = n / (1 - arg * arg) * (P1 - arg * P2);
-
-	return result;
-}
-
-void writeComplexVectorsToFile(const std::string& filename,
-	const std::vector<std::complex<double>>& v1,
-	const std::vector<std::complex<double>>& v2,
-	const std::vector<std::complex<double>>& v3,
-	int precision = 6) {
-	std::ofstream file(filename);
-	if (!file) {
-		std::cerr << "Ошибка открытия файла!" << std::endl;
-		return;
-	}
-
-	file << std::fixed << std::setprecision(precision);
-	size_t maxSize = std::max({ v1.size(), v2.size(), v3.size() });
-
-	for (size_t i = 0; i < maxSize; ++i) {
-		if (i < v1.size()) file << v1[i].real() << "+" << v1[i].imag() << "i";
-		file << "\t";
-		if (i < v2.size()) file << v2[i].real() << "+" << v2[i].imag() << "i";
-		file << "\t";
-		if (i < v3.size()) file << v3[i].real() << "+" << v3[i].imag() << "i";
-		file << "\n";
-	}
-
-	file.close();
-}
+extern std::complex<double> i;
+extern double PI;
 
 #define MatrixType arma::cx_dmat
 
@@ -114,8 +13,8 @@ void calculate_electric_field(std::vector<double>& r, std::vector<d_compl>& eps_
 	std::vector<d_compl> vE_r;
 	std::vector<d_compl> vE_theta;
 	std::vector<d_compl> vE_phi;
-	int layers_number = r.size();
-	int N = 100;
+	size_t layers_number = r.size();
+	size_t N = 125;
 	double k = 2 * PI / lambda; // wave number
 
 	double x = r.back() * 1.1;
@@ -123,7 +22,7 @@ void calculate_electric_field(std::vector<double>& r, std::vector<d_compl>& eps_
 	double phi = 0;
 
 	std::vector<double> eps;
-	for (auto e : eps_compl)
+	for (d_compl e : eps_compl)
 		eps.push_back(e.real());
 	eps.push_back(1.0);
 
@@ -141,8 +40,8 @@ void calculate_electric_field(std::vector<double>& r, std::vector<d_compl>& eps_
 		std::vector<std::vector<MatrixType>> B_m(layers_number, std::vector<MatrixType>(N, MatrixType(2, 2, arma::fill::none)));
 		std::vector<std::vector<MatrixType>> vT_e(layers_number, std::vector<MatrixType>(N, MatrixType(2, 2, arma::fill::none)));
 		std::vector<std::vector<MatrixType>> vT_m(layers_number, std::vector<MatrixType>(N, MatrixType(2, 2, arma::fill::none)));
-		std::vector<MatrixType> T_e(N, MatrixType(2, 2, arma::fill::ones)); // ?
-		std::vector<MatrixType> T_m(N, MatrixType(2, 2, arma::fill::ones)); // ?
+		std::vector<MatrixType> T_e(N, arma::eye<arma::cx_mat>(2, 2));
+		std::vector<MatrixType> T_m(N, arma::eye<arma::cx_mat>(2, 2));
 
 		for (int j = 0; j < layers_number; j++)
 		{
@@ -152,7 +51,7 @@ void calculate_electric_field(std::vector<double>& r, std::vector<d_compl>& eps_
 
 				A_m[j][n](0, 0) = std::sph_bessel(n, arg_A);
 				A_m[j][n](0, 1) = spherical_hankel(1, n, arg_A);
-				A_m[j][n](1, 0) = sqrt(eps[j]) * normalized_bessel_derivative(n,arg_A); // with derivative of Bessel function
+				A_m[j][n](1, 0) = sqrt(eps[j]) * normalized_bessel_derivative(n, arg_A); // with derivative of Bessel function
 				A_m[j][n](1, 1) = sqrt(eps[j]) * normalized_hancel_derivative(1, n, arg_A); // with derivative of Hankel function
 
 				A_e[j][n](0, 0) = eps[j] * A_m[j][n](0, 0);
@@ -174,6 +73,11 @@ void calculate_electric_field(std::vector<double>& r, std::vector<d_compl>& eps_
 				B_e[j][n](1, 1) = B_m[j][n](1, 1);
 
 				MatrixType B_m_inv = arma::inv(B_m[j][n]);
+				//d_compl a = B_m_inv(0, 0) * A_m[j][n](0, 0) + B_m_inv(0, 1) * A_m[j][n](1, 0);
+				//d_compl b = B_m_inv(0, 0) * A_m[j][n](0, 1) + B_m_inv(0, 1) * A_m[j][n](1, 1);
+				//d_compl c = B_m_inv(1, 0) * A_m[j][n](0, 0) + B_m_inv(1, 1) * A_m[j][n](1, 0);
+				//d_compl d = B_m_inv(1, 0) * A_m[j][n](0, 1) + B_m_inv(1, 1) * A_m[j][n](1, 1);
+
 				vT_m[j][n] = B_m_inv * A_m[j][n];
 				T_m[n] *= vT_m[j][n];
 
@@ -225,7 +129,7 @@ void calculate_electric_field(std::vector<double>& r, std::vector<d_compl>& eps_
 	//assert(false);
 }
 
-int main()
+void FirstExercise()
 {
 	double lambda = 2 * PI / 1000.0; // wave length
 	double k = 2 * PI / lambda; // wave number
@@ -236,4 +140,18 @@ int main()
 	eps = { 1, d_compl(1.1, 0.01), 2.5 };
 	r = { 0.01, 0.01 + PI / k, 0.01 + 0.5 / k };
 	calculate_electric_field(r, eps, lambda);
+}
+
+void TestSpecialFunctions()
+{
+	std::vector<double> v;
+	for (int i = 1; i < 1000; i++)
+		v.push_back(normalized_bessel_derivative(0, 0.1 * i));
+
+	writeNumericVectorToFile("bessels.txt", v);
+}
+
+int main()
+{
+	FirstExercise();
 }
