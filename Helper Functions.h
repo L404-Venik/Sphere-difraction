@@ -22,7 +22,7 @@ void writeNumericVectorToFile(const std::string& filename, const std::vector<N>&
 	file << std::fixed << std::setprecision(precision);
 
 	for (size_t i = 0; i < v.size(); ++i)
-		file << v[i] << " ";
+		file << v[i] << "\n";
 
 	file.close();
 }

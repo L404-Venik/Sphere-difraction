@@ -2,6 +2,7 @@
 
 std::complex<double> i(0.0, 1.0);
 double PI = std::numbers::pi_v<double>;
+double EPS = 0.000000001;
 
 // Hackel
 std::complex<double> spherical_hankel(char order, double nu, double x)
@@ -54,6 +55,7 @@ double normalized_bessel_derivative(double n, double arg)
 // Neumann
 double neumann_derivative(double n, double arg)
 {
+	assert(sin(n * PI) != 0);
 	double result;
 
 	result = bessel_derivative(n, arg) * cos(n * PI) - bessel_derivative(-n, arg);
@@ -64,6 +66,7 @@ double neumann_derivative(double n, double arg)
 
 double normalized_neumann_derivative(double n, double arg)
 {
+	assert(arg != 0);
 	double result;
 
 	result = -1.0 / 2.0 * std::sqrt(PI / (2 * std::pow(arg, 3))) * std::cyl_neumann(n + 1.0 / 2.0, arg)
@@ -76,11 +79,30 @@ double normalized_neumann_derivative(double n, double arg)
 // Legendre
 double legendre_derivative(double n, double arg)
 {
+	//assert(arg != 1);
 	double result;
 	double P1 = std::legendre(n - 1, arg);
 	double P2 = std::legendre(n, arg);
 
+	if (arg - 1.0 < EPS)
+		arg += EPS;
+
 	result = n / (1 - arg * arg) * (P1 - arg * P2);
 
 	return result;
+}
+
+double assoc_legendre_derivative(unsigned int n, unsigned int m, double arg)
+{
+	double result;
+	double P1 = std::assoc_legendre(n - 1,m, arg);
+	double P2 = std::assoc_legendre(n, m, arg);
+
+	if (arg - 1.0 < EPS)
+		arg += EPS;
+
+	result = n / (1 - arg * arg) * (P1 - arg * P2);
+
+	return result;
+
 }

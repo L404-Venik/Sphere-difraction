@@ -13,5 +13,4 @@
 
 using d_compl = std::complex<double>;
 
-double EPS = 0.000000001;
 

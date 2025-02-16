@@ -27,3 +27,5 @@ double normalized_neumann_derivative(double n, double arg);
 
 // Legendre
 double legendre_derivative(double n, double arg);
+
+double assoc_legendre_derivative(unsigned int n, unsigned int m, double arg);
