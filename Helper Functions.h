@@ -21,8 +21,34 @@ void writeNumericVectorToFile(const std::string& filename, const std::vector<N>&
 
 	file << std::fixed << std::setprecision(precision);
 
-	for (size_t i = 0; i < v.size(); ++i)
-		file << v[i] << "\n";
+    if constexpr (std::is_same_v<N, std::complex<double>> || std::is_same_v<N, std::complex<float>>)
+    {
+        for (const auto& val : v)
+        {
+            double realPart = val.real();
+            double imagPart = val.imag();
+
+            if (std::abs(realPart) < 1e-5 && realPart != 0)
+                file << std::scientific << std::setprecision(precision) << realPart;
+            else
+                file << std::fixed << std::setprecision(precision) << realPart;
+
+            if (std::abs(imagPart) < 1e-5 && imagPart != 0)
+                file << " " << std::scientific << std::setprecision(precision) << imagPart << "i\n";
+            else
+                file << " " << std::fixed << std::setprecision(precision) << imagPart << "i\n";
+        }
+    }
+    else
+    {
+        for (const auto& val : v)
+        {
+            if (std::abs(val) < 1e-5 && val != 0)
+                file << std::scientific << std::setprecision(precision) << val << "\n";
+            else
+                file << std::fixed << std::setprecision(precision) << val << "\n";
+        }
+    }
 
 	file.close();
 }
