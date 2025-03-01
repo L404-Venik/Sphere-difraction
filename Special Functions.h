@@ -18,12 +18,12 @@ std::complex<double> sph_hankel_derivative(char order, double n, double arg);
 // Bessel
 double bessel_derivative(double n, double arg);
 
-double sph_bessel_derivative(double n, double arg);
+double sph_bessel_derivative(unsigned int n, double arg);
 
 // Neumann
 double neumann_derivative(double n, double arg);
 
-double sph_neumann_derivative(double n, double arg);
+double sph_neumann_derivative(unsigned int n, double arg);
 
 // Legendre
 double legendre_derivative(double n, double arg);

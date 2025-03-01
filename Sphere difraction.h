@@ -13,4 +13,11 @@
 
 using d_compl = std::complex<double>;
 
+extern std::complex<double> i;
+extern double PI;
+extern double EPS;
 
+
+void calculate_electric_field_close(std::vector<double>& r, std::vector<d_compl>& eps_compl, double lambda);
+
+void calculate_electric_field_far(std::vector<double>& r, std::vector<d_compl>& eps_compl, double lambda);

@@ -1,19 +1,16 @@
 ﻿#include "Sphere difraction.h"
 
-//std::complex<double> i(0.0, 1.0);
-//double PI = std::numbers::pi_v<double>;
-
-extern std::complex<double> i;
-extern double PI;
-extern double EPS;
 
 #define MatrixType arma::cx_dmat
 #define iHO  1 // Hankel order
 
-void calculate_T(int layers_number, double k, std::vector<double>& eps, std::vector<double>& r,
+size_t N = 25; // global variable, defining the summation limit
+
+
+void calculate_T(double k, std::vector<double>& eps, std::vector<double>& r,
 	std::vector<MatrixType>& T_e, std::vector<MatrixType>& T_m)
 {
-	char N = 50;
+	int layers_number = r.size();
 
 	// Define a 4D vectors A and B
 	std::vector<std::vector<MatrixType>> A_e(layers_number, std::vector<MatrixType>(N, MatrixType(2, 2, arma::fill::none)));
@@ -71,8 +68,6 @@ void calculate_electric_field_close(std::vector<double>& r, std::vector<d_compl>
 	std::vector<d_compl> vE_r;
 	std::vector<d_compl> vE_theta;
 	std::vector<d_compl> vE_phi;
-	size_t layers_number = r.size() - 1;
-	size_t N = 125;
 	double k = 2 * PI / lambda; // wave number
 
 	double x = r.back() * 1.1;
@@ -82,12 +77,10 @@ void calculate_electric_field_close(std::vector<double>& r, std::vector<d_compl>
 	std::vector<double> eps;
 	for (d_compl e : eps_compl)
 		eps.push_back(e.real());
-	eps.push_back(1.0);
 
 
-	std::vector<MatrixType> T_e;
-	std::vector<MatrixType> T_m;
-	calculate_T(layers_number, k, eps, r, T_e, T_m);
+	std::vector<MatrixType> T_e, T_m;
+	calculate_T(k, eps, r, T_e, T_m);
 
 
 	for (theta = 0; theta < PI; theta += (PI / 36.0))
@@ -97,19 +90,21 @@ void calculate_electric_field_close(std::vector<double>& r, std::vector<d_compl>
 		d_compl E_theta = 0;
 		d_compl E_phi = 0;
 
+		double cos_th = cos(theta);
+		double sin_th = sin(theta);
 
-		double d_1 = 0;
-		double c_1 = 0;
 		d_compl R_e = 1, R_m = 1;
+		d_compl d_e_n, d_m_n, c_n;
+		double arg_R = k * std::sqrt(eps[1]) * r[0];
 		for (int n = 0; n < N; n++)
 		{
-			std::complex<double> c_n = std::pow(i, (n - 1)) / (k * k) * (2.0 * n + 1) / (n * (n + 1.0));
+			c_n = std::pow(i, (n - 1)) / (k * k) * (2.0 * n + 1) / (n * (n + 1.0));
 
-			std::complex<double> d_e_n = c_n * (T_e[n](1, 0) + T_e[n](1, 1) * R_e) / (T_e[n](0, 0) + T_e[n](0, 1) * R_e);
-			std::complex<double> d_m_n = c_n * (T_m[n](1, 0) + T_m[n](1, 1) * R_m) / (T_m[n](0, 0) + T_m[n](0, 1) * R_m);
+			R_m = -std::sph_bessel(n, arg_R) / sph_hankel(iHO, n, arg_R);
+			R_e = -sph_bessel_derivative(n, arg_R) / sph_hankel_derivative(iHO, n, arg_R);
+			d_e_n = c_n * (T_e[n](1, 0) + T_e[n](1, 1) * R_e) / (T_e[n](0, 0) + T_e[n](0, 1) * R_e);
+			d_m_n = c_n * (T_m[n](1, 0) + T_m[n](1, 1) * R_m) / (T_m[n](0, 0) + T_m[n](0, 1) * R_m);
 
-			double cos_th = cos(theta);
-			double sin_th = sin(theta);
 			//if (sin_th == 0.0)
 			//	sin_th += EPS;
 			d_compl Hanc = sph_hankel(iHO, n, k * x);
@@ -122,9 +117,6 @@ void calculate_electric_field_close(std::vector<double>& r, std::vector<d_compl>
 			E_theta = E_theta + (d_e_n * Hanc_der * Leg_der * sin_th) + (i * d_m_n / sin_th * Hanc * Leg);
 
 			E_phi = E_phi + (d_e_n / sin_th * Hanc_der * Leg) + (i * d_m_n * Hanc * Leg_der * sin_th);
-
-			R_e = d_e_n / c_n;
-			R_m = d_m_n / c_n;
 		}
 
 		E_theta *= k / x * cos(phi);
@@ -135,7 +127,7 @@ void calculate_electric_field_close(std::vector<double>& r, std::vector<d_compl>
 		vE_phi.push_back(E_phi);
 	}
 
-	//writeNumericVectorToFile("E_theta.txt", vE_theta);
+	writeNumericVectorToFile("E_theta.txt", vE_theta);
 }
 
 
@@ -143,8 +135,6 @@ void calculate_electric_field_far(std::vector<double>& r, std::vector<d_compl>& 
 {
 	std::vector<d_compl> vE_theta;
 	std::vector<d_compl> vE_phi;
-	size_t layers_number = r.size() - 1;
-	size_t N = 25;
 	double k = 2 * PI / lambda; // wave number
 
 	double x = r.back() * 10;
@@ -154,12 +144,10 @@ void calculate_electric_field_far(std::vector<double>& r, std::vector<d_compl>& 
 	std::vector<double> eps;
 	for (d_compl e : eps_compl)
 		eps.push_back(e.real());
-	eps.push_back(1.0);
 
 
-	std::vector<MatrixType> T_e;
-	std::vector<MatrixType> T_m;
-	calculate_T(layers_number, k, eps, r, T_e, T_m);
+	std::vector<MatrixType> T_e, T_m;
+	calculate_T(k, eps, r, T_e, T_m);
 
 
 	for (theta = 0; theta < 2 * PI; theta += (PI / (3 * 36.0)))
@@ -223,42 +211,4 @@ void calculate_electric_field_far(std::vector<double>& r, std::vector<d_compl>& 
 
 	writeNumericVectorToFile("E_theta.txt", vE_theta);
 	//writeNumericVectorToFile("E_phi.txt", vE_phi);
-}
-
-
-void calculate_electric_field_classical(std::vector<double>& r, std::vector<d_compl>& eps_compl, double lambda)
-{
-
-}
-
-void FirstExercise()
-{
-	double lambda = 2 * PI / 1000.0; // wave length
-	double k = 2 * PI / lambda; // wave number
-	int layers_number = 3;
-	std::vector<d_compl> eps(layers_number + 1);
-	std::vector<double> r(layers_number + 1);
-
-	eps = { 1, d_compl(1.1, 0.01), 2.5 , 8.85e-12 };
-	r = { 0.01, 0.01 + PI / k, 0.01 + 0.5 / k };
-	calculate_electric_field_far(r, eps, lambda);
-}
-
-void SimpleSphere()
-{
-	double lambda = 2 * PI / 1000.0; // wave length
-	double k = 2 * PI / lambda; // wave number
-	int layers_number = 1;
-	std::vector<d_compl> eps(layers_number + 1);
-	std::vector<double> r(layers_number + 1);
-
-	eps = { 1, 8.85e-12 };
-	r = { 0.01, 0.1 };
-	calculate_electric_field_far(r, eps, lambda);
-}
-
-int main()
-{
-	FirstExercise();
-	//SimpleSphere();
 }

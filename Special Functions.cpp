@@ -43,15 +43,15 @@ double bessel_derivative(double n, double arg)
 	return (1.0 / 2.0) * (std::cyl_bessel_j(n - 1, arg) - std::cyl_bessel_j(n + 1, arg));
 }
 
-double sph_bessel_derivative(double n, double arg)
+double sph_bessel_derivative(unsigned int n, double arg) // derivative of (x * j_n(x))
 {
 	assert(arg != 0);
 	double result;
-	/*result = -1.0 / 2.0 * std::sqrt(PI / (2 * std::pow(arg, 3)));
-	result *= std::cyl_bessel_j(n + 1.0 / 2.0, arg);
-	result += std::sqrt(PI / (2 * arg)) * bessel_derivative(n + 1.0 / 2.0, arg);*/
-	result = std::sph_bessel(n, arg) + arg * (std::sph_bessel(n - 1, arg) - std::sph_bessel(n + 1, arg));
-	result *= 0.5;
+
+	//result = std::sph_bessel(n, arg) + arg * (std::sph_bessel(n - 1, arg) - std::sph_bessel(n + 1, arg));
+	//result *= 0.5;
+
+	result = (n + 1) * std::sph_bessel(n, arg) - arg * std::sph_bessel(n + 1, arg);
 
 	return result;
 }
@@ -68,15 +68,15 @@ double neumann_derivative(double n, double arg)
 	return result;
 }
 
-double sph_neumann_derivative(double n, double arg)
+double sph_neumann_derivative(unsigned int n, double arg) // derivative of (x * n_n(x))
 {
 	assert(arg != 0);
 	double result;
 
-	//result = -1.0 / 2.0 * std::sqrt(PI / (2 * std::pow(arg, 3))) * std::cyl_neumann(n + 1.0 / 2.0, arg)
-	//	+ std::sqrt(PI / (2 * arg)) * neumann_derivative(n + 1.0 / 2.0, arg);
-	result = std::sph_neumann(n, arg) + arg * (std::sph_neumann(n - 1, arg) - std::sph_neumann(n + 1, arg));
-	result *= 0.5;
+	//result = std::sph_neumann(n, arg) + arg * (std::sph_neumann(n - 1, arg) - std::sph_neumann(n + 1, arg));
+	//result *= 0.5;
+
+	result = (n + 1) * std::sph_neumann(n, arg) - arg * std::sph_neumann(n + 1, arg);
 
 	return result;
 }
