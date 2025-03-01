@@ -7,9 +7,12 @@
 size_t N = 25; // global variable, defining the summation limit
 
 
-void calculate_T(double k, std::vector<double>& eps, std::vector<double>& r,
-	std::vector<MatrixType>& T_e, std::vector<MatrixType>& T_m)
+void calculate_coefficients(double k, std::vector<double>& eps, std::vector<double>& r,
+	std::vector<d_compl>& D_e, std::vector<d_compl>& D_m)
 {
+	d_compl R_e, R_m;
+	d_compl d_e_n, d_m_n, c_n;
+	double arg_R;
 	int layers_number = r.size();
 
 	// Define a 4D vectors A and B
@@ -19,8 +22,8 @@ void calculate_T(double k, std::vector<double>& eps, std::vector<double>& r,
 	std::vector<std::vector<MatrixType>> B_m(layers_number, std::vector<MatrixType>(N, MatrixType(2, 2, arma::fill::none)));
 	//std::vector<std::vector<MatrixType>> vT_e(layers_number, std::vector<MatrixType>(N, MatrixType(2, 2, arma::fill::none)));
 	//std::vector<std::vector<MatrixType>> vT_m(layers_number, std::vector<MatrixType>(N, MatrixType(2, 2, arma::fill::none)));
-	T_e = std::vector<MatrixType>(N, arma::eye<arma::cx_mat>(2, 2));
-	T_m = std::vector<MatrixType>(N, arma::eye<arma::cx_mat>(2, 2));
+	std::vector<MatrixType> T_e(N, arma::eye<arma::cx_mat>(2, 2));
+	std::vector<MatrixType> T_m(N, arma::eye<arma::cx_mat>(2, 2));
 
 	for (int j = 0; j < layers_number; j++)
 	{
@@ -61,6 +64,22 @@ void calculate_T(double k, std::vector<double>& eps, std::vector<double>& r,
 			T_e[n] *= B_e_inv * A_e[j][n];
 		}
 	}
+
+	arg_R = k * std::sqrt(eps[1]) * r[0];
+	D_e.clear(); D_m.clear();
+	D_e.push_back(0); D_m.push_back(0);
+	for (int n = 1; n < N; n++)
+	{
+		c_n = std::pow(i, (n - 1)) / (k * k) * (2.0 * n + 1) / (n * (n + 1.0));
+
+		R_m = -std::sph_bessel(n, arg_R) / sph_hankel(iHO, n, arg_R);
+		R_e = -sph_bessel_derivative(n, arg_R) / sph_hankel_derivative(iHO, n, arg_R);
+		d_e_n = c_n * (T_e[n](1, 0) + T_e[n](1, 1) * R_e) / (T_e[n](0, 0) + T_e[n](0, 1) * R_e);
+		d_m_n = c_n * (T_m[n](1, 0) + T_m[n](1, 1) * R_m) / (T_m[n](0, 0) + T_m[n](0, 1) * R_m);
+
+		D_e.push_back(d_e_n);
+		D_m.push_back(d_m_n);
+	}
 }
 
 void calculate_electric_field_close(std::vector<double>& r, std::vector<d_compl>& eps_compl, double lambda)
@@ -68,6 +87,8 @@ void calculate_electric_field_close(std::vector<double>& r, std::vector<d_compl>
 	std::vector<d_compl> vE_r;
 	std::vector<d_compl> vE_theta;
 	std::vector<d_compl> vE_phi;
+	std::vector<d_compl> vD_m;
+	std::vector<d_compl> vD_e;
 	double k = 2 * PI / lambda; // wave number
 
 	double x = r.back() * 1.1;
@@ -79,8 +100,7 @@ void calculate_electric_field_close(std::vector<double>& r, std::vector<d_compl>
 		eps.push_back(e.real());
 
 
-	std::vector<MatrixType> T_e, T_m;
-	calculate_T(k, eps, r, T_e, T_m);
+	calculate_coefficients(k, eps, r, vD_e, vD_m);
 
 
 	for (theta = 0; theta < PI; theta += (PI / 36.0))
@@ -93,30 +113,18 @@ void calculate_electric_field_close(std::vector<double>& r, std::vector<d_compl>
 		double cos_th = cos(theta);
 		double sin_th = sin(theta);
 
-		d_compl R_e = 1, R_m = 1;
-		d_compl d_e_n, d_m_n, c_n;
-		double arg_R = k * std::sqrt(eps[1]) * r[0];
 		for (int n = 0; n < N; n++)
 		{
-			c_n = std::pow(i, (n - 1)) / (k * k) * (2.0 * n + 1) / (n * (n + 1.0));
-
-			R_m = -std::sph_bessel(n, arg_R) / sph_hankel(iHO, n, arg_R);
-			R_e = -sph_bessel_derivative(n, arg_R) / sph_hankel_derivative(iHO, n, arg_R);
-			d_e_n = c_n * (T_e[n](1, 0) + T_e[n](1, 1) * R_e) / (T_e[n](0, 0) + T_e[n](0, 1) * R_e);
-			d_m_n = c_n * (T_m[n](1, 0) + T_m[n](1, 1) * R_m) / (T_m[n](0, 0) + T_m[n](0, 1) * R_m);
-
-			//if (sin_th == 0.0)
-			//	sin_th += EPS;
 			d_compl Hanc = sph_hankel(iHO, n, k * x);
 			d_compl Hanc_der = sph_hankel_derivative(iHO, n, k * x);
 			double Leg = std::legendre(n, cos_th);
 			double Leg_der = legendre_derivative(n, cos_th);
 
-			E_r += d_e_n * (n * (n + 1) / (x * x)) * Hanc * Leg * cos(phi);
+			E_r += vD_e[n] * (n * (n + 1) / (x * x)) * Hanc * Leg * cos(phi);
 
-			E_theta = E_theta + (d_e_n * Hanc_der * Leg_der * sin_th) + (i * d_m_n / sin_th * Hanc * Leg);
+			E_theta = E_theta + (vD_e[n] * Hanc_der * Leg_der * sin_th) + (i * vD_m[n] / sin_th * Hanc * Leg);
 
-			E_phi = E_phi + (d_e_n / sin_th * Hanc_der * Leg) + (i * d_m_n * Hanc * Leg_der * sin_th);
+			E_phi = E_phi + (vD_e[n] / sin_th * Hanc_der * Leg) + (i * vD_m[n] * Hanc * Leg_der * sin_th);
 		}
 
 		E_theta *= k / x * cos(phi);
@@ -135,6 +143,8 @@ void calculate_electric_field_far(std::vector<double>& r, std::vector<d_compl>& 
 {
 	std::vector<d_compl> vE_theta;
 	std::vector<d_compl> vE_phi;
+	std::vector<d_compl> vD_m;
+	std::vector<d_compl> vD_e;
 	double k = 2 * PI / lambda; // wave number
 
 	double x = r.back() * 10;
@@ -146,11 +156,10 @@ void calculate_electric_field_far(std::vector<double>& r, std::vector<d_compl>& 
 		eps.push_back(e.real());
 
 
-	std::vector<MatrixType> T_e, T_m;
-	calculate_T(k, eps, r, T_e, T_m);
+	calculate_coefficients(k, eps, r, vD_e, vD_m);
 
 
-	for (theta = 0; theta < 2 * PI; theta += (PI / (3 * 36.0)))
+	for (theta = 0; theta < 2 * PI; theta += (PI / (5 * 36.0)))
 	{
 		// electric field components
 		d_compl E_th = 0; // E theta
@@ -163,21 +172,10 @@ void calculate_electric_field_far(std::vector<double>& r, std::vector<d_compl>& 
 		double sin_th = sin(theta);
 
 
-		d_compl R_e = 1, R_m = 1;
 		d_compl first_term, second_term;
-		d_compl d_e_n, d_m_n, c_n;
-		double arg_R = k * std::sqrt(eps[1]) * r[0];
 		d_compl i_pow = -i;
 		for (int n = 1; n < N; n++)
 		{
-			c_n = std::pow(i, (n - 1)) / (k * k) * (2.0 * n + 1) / (n * (n + 1.0));
-
-			R_m = -std::sph_bessel(n, arg_R) / sph_hankel(iHO, n, arg_R);
-			R_e = -sph_bessel_derivative(n, arg_R) / sph_hankel_derivative(iHO, n, arg_R);
-			d_e_n = c_n * (T_e[n](1, 0) + T_e[n](1, 1) * R_e) / (T_e[n](0, 0) + T_e[n](0, 1) * R_e);
-			d_m_n = c_n * (T_m[n](1, 0) + T_m[n](1, 1) * R_m) / (T_m[n](0, 0) + T_m[n](0, 1) * R_m);
-
-
 			first_term = std::assoc_legendre(n, 1, cos_th) / sin_th;
 			second_term = assoc_legendre_derivative(n, 1, cos_th) * sin_th;
 
@@ -186,9 +184,9 @@ void calculate_electric_field_far(std::vector<double>& r, std::vector<d_compl>& 
 			if (std::isnan(second_term.real()) || std::isinf(second_term.real()) || std::isnan(second_term.imag()) || std::isinf(second_term.imag()))
 				second_term = 0.0;
 
-			S_th += i_pow * (d_m_n * first_term - d_e_n * second_term);
+			S_th += i_pow * (vD_m[n] * first_term - vD_e[n] * second_term);
 
-			S_ph += i_pow * (d_m_n * second_term - d_e_n * first_term);
+			S_ph += i_pow * (vD_m[n] * second_term - vD_e[n] * first_term);
 
 			i_pow *= -i;
 		}
