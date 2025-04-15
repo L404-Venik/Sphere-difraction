@@ -1,18 +1,23 @@
 import numpy as np
 import scipy.special as sp
+#from numba import njit
+#import time
 
-N = 25  # глобальная переменная, определяющая предел суммирования
+N = 40  # глобальная переменная, определяющая предел суммирования
 iHO = 1  # порядок функции Ханкеля
 
-def sph_hankel(n: int, z: complex) -> complex:
-    return  sp.spherical_jn(n, z) + 1j * sp.spherical_yn(n, z)
 
-def sph_bessel_derivative(n: int, z: complex) -> complex: # derivative of x * j_n(x)
+def xi(n: int, z: complex) -> complex: # x * h1_n(x)
+    return z * ( sp.spherical_jn(n, z) + 1j * sp.spherical_yn(n, z))
+
+def xi_derivative(n: int, z: complex) -> complex: # derivative of x * h1_n(x)
+    return z * (sp.spherical_jn(n, z, derivative=True) + 1j * sp.spherical_yn(n, z, derivative=True)) + ( sp.spherical_jn(n, z) + 1j * sp.spherical_yn(n, z))
+
+def psi(n: int, z:complex) -> complex: # x * j_n(x)
+    return z * sp.spherical_jn(n, z)
+
+def psi_derivative(n: int, z: complex) -> complex: # derivative of x * j_n(x)
     return z * sp.spherical_jn(n, z, derivative=True) + sp.spherical_jn(n, z)
-    #return (n+1) * sp.spherical_jn(n, z) - z * sp.spherical_jn(n + 1, z)
-
-def sph_hankel_derivative(n: int, z: complex) -> complex: # derivative of x * h_n(x)
-    return z * (sp.spherical_jn(n, z, derivative=True) + 1j * sp.spherical_yn(n, z, derivative=True)) + sph_hankel(n, z)
 
 def assoc_legendre_derivative(n: int, m: int, x: float) -> float:
     if np.isclose(x,1.0):
@@ -34,8 +39,8 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float]) -> tupl
             arg_B = k * np.sqrt(eps[i + 1]) * r[i]
             
             A_m = np.array([
-                [arg_A * sp.spherical_jn(n, arg_A),                 arg_A * sph_hankel(n, arg_A)],
-                [np.sqrt(eps[i]) * sph_bessel_derivative(n, arg_A), np.sqrt(eps[i]) * sph_hankel_derivative(n, arg_A)]
+                [                              psi(n,arg_A),                              xi(n, arg_A)],
+                [np.sqrt(eps[i]) * psi_derivative(n, arg_A), np.sqrt(eps[i]) * xi_derivative(n, arg_A)]
             ], dtype=np.complex128)
             
             A_e = np.array([
@@ -44,8 +49,8 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float]) -> tupl
             ], dtype=np.complex128)
             
             B_m = np.array([
-                [arg_B * sp.spherical_jn(n, arg_B),                     arg_B * sph_hankel(n, arg_B)],
-                [np.sqrt(eps[i + 1]) * sph_bessel_derivative(n, arg_B), np.sqrt(eps[i + 1]) * sph_hankel_derivative(n, arg_B)]
+                [                                 psi(n, arg_B),                                  xi(n, arg_B)],
+                [np.sqrt(eps[i + 1]) * psi_derivative(n, arg_B), np.sqrt(eps[i + 1]) * xi_derivative(n, arg_B)]
             ], dtype=np.complex128)
             
             B_e = np.array([
@@ -60,8 +65,8 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float]) -> tupl
     for n in range(1, N):
         c_n = (1j ** (n - 1)) / (k ** 2) * (2 * n + 1) / (n * (n + 1))
         
-        R_m = -sp.spherical_jn(n, arg_R) / sph_hankel(n, arg_R)
-        R_e = -sph_bessel_derivative(n, arg_R) / sph_hankel_derivative(n, arg_R)
+        R_m = - psi(n, arg_R) / xi(n, arg_R)
+        R_e = - psi_derivative(n, arg_R) / xi_derivative(n, arg_R)
         
         d_e_n = c_n * (T_e[n][1, 0] + T_e[n][1, 1] * R_e) / (T_e[n][0, 0] + T_e[n][0, 1] * R_e)
         d_m_n = c_n * (T_m[n][1, 0] + T_m[n][1, 1] * R_m) / (T_m[n][0, 0] + T_m[n][0, 1] * R_m)
@@ -82,7 +87,7 @@ def calculate_electric_field_far(r: list[float], eps_compl: list[complex], lambd
     
     vD_e, vD_m = calculate_coefficients(k, eps_compl, r)
     
-    for theta in np.arange(0, 2 * np.pi, np.pi / (5 * 36.0)):
+    for theta in np.arange(0.0001, 2 * np.pi, np.pi / (5 * 36.0)):
         E_th, E_ph = 0, 0
         S_th, S_ph = 0, 0
         
@@ -124,20 +129,71 @@ def calculate_electric_field_far(r: list[float], eps_compl: list[complex], lambd
     
     return vE_theta, vE_phi
 
-def calculate_electric_field_close(r: list[float], eps_compl: list[complex], lambda_: float) -> tuple[list[complex], list[complex]]:
+
+
+def calculate_electric_field_close_radial(r: list[float], eps_compl: list[complex], lambda_: float, R: float) -> tuple[list[complex], list[complex], list[complex]]:
+    k = 2 * np.pi / lambda_
+    phi = 0
+    
+    vE_theta = []
+    vE_phi = []
+    vE_r = []
+    
+    vD_e, vD_m = calculate_coefficients(k, eps_compl, r)
+    
+
+    for theta in np.arange(0.001, 2 * np.pi, np.pi / (5 * 36.0)):
+        E_r, E_th, E_ph = 0, 0, 0
+        
+        cos_th = np.cos(theta)
+        sin_th = np.sin(theta)
+        
+        for n in range(1, N):
+
+            E_r += vD_e[n] * n * (n + 1) / R**2 * xi(n, k*R) * sp.lpmv(1, n, cos_th) * np.cos(phi)
+
+            E_th += vD_e[n] * xi_derivative(n, k * R) * (assoc_legendre_derivative(n, 1, cos_th) * (-sin_th)) + 1j * vD_m[n] /sin_th * xi(n, k*R) * sp.lpmv(1,n,cos_th)
+
+            E_ph += vD_e[n] / sin_th * xi_derivative(n, k*R) *sp.lpmv(1,n,cos_th) + 1j * vD_m[n] * xi(n, k * R) * (assoc_legendre_derivative(n, 1, cos_th) * (-sin_th))
+        
+        E_th *=  k / R * np.cos(phi)
+        E_ph *= -k / R * np.sin(phi)
+        
+        vE_r.append(E_r)
+        vE_theta.append(E_th)
+        vE_phi.append(E_ph)
+    
+    vE_theta[0] = vE_theta[1]
+    # #vE_theta[-1] = vE_theta[-2]
+    vE_theta[len(vE_theta) // 2] = vE_theta[len(vE_theta) // 2 - 1]
+    
+    vE_phi[0] = vE_phi[1]
+    # #vE_phi[-1] = vE_phi[-2]
+    vE_phi[len(vE_phi) // 2] = vE_phi[len(vE_phi) // 2 - 1]
+    
+    vE_r[0] = vE_r[1]
+    # #vE_r[-1] = vE_r[-2]
+    vE_r[len(vE_r) // 2] = vE_r[len(vE_r) // 2 - 1]
+
+    return vE_r, vE_theta, vE_phi
+
+
+def calculate_electric_field_close(r: list[float], eps_compl: list[complex], lambda_: float, limits:list[float]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
     k = 2 * np.pi / lambda_
     phi = 0
 
-    N_x = N_y = 200
-    x_values = np.linspace(2 * -r[-1], 2 * r[-1], N_x)
-    y_values = np.linspace(2 * -r[-1], 2 * r[-1], N_y)
+    N_x = N_y = 300
+    x_min, x_max, y_min, y_max = limits
+    x_values = np.linspace(x_min, x_max, N_x)
+    y_values = np.linspace(y_min, y_max, N_y)
     
     vE_theta = np.zeros((N_x,N_y),dtype=np.complex128)
     vE_phi = np.zeros((N_x,N_y),dtype=np.complex128)
     vE_r = np.zeros((N_x,N_y),dtype=np.complex128)
     
     vD_e, vD_m = calculate_coefficients(k, eps_compl, r)
-    
+
+    cos_phi = np.cos(phi)
 
     for i, x in enumerate(x_values):
         for j, y in enumerate(y_values):
@@ -151,13 +207,16 @@ def calculate_electric_field_close(r: list[float], eps_compl: list[complex], lam
             cos_th = np.cos(theta)
             sin_th = np.sin(theta)
             
+            kR = k * R
+            inv_R2 = 1 / R**2
+
             for n in range(1, N):
 
-                E_r += vD_e[n] * n * (n + 1) / R**2 * sph_hankel(n, k*R) * sp.lpmv(1, n, cos_th) * np.cos(phi)
+                E_r += vD_e[n] * n * (n + 1) * inv_R2 * xi(n, kR) * sp.lpmv(1, n, cos_th) * cos_phi
 
-                E_th += vD_e[n] * sph_hankel_derivative(n, k * R) * (assoc_legendre_derivative(n, 1, cos_th) * (-sin_th)) + 1j * vD_m[n] /sin_th * sph_hankel(n, k*R) * sp.lpmv(1,n,cos_th)
+                E_th += vD_e[n] * xi_derivative(n, kR) * (assoc_legendre_derivative(n, 1, cos_th) * (-sin_th)) + 1j * vD_m[n] / sin_th * xi(n, kR) * sp.lpmv(1,n,cos_th)
 
-                E_ph += vD_e[n] / sin_th * sph_hankel_derivative(n, k*R) *sp.lpmv(1,n,cos_th) + 1j * vD_m[n] * sph_hankel(n, k * R) * (assoc_legendre_derivative(n, 1, cos_th) * (-sin_th))
+                E_ph += vD_e[n] / sin_th * xi_derivative(n, kR) *sp.lpmv(1,n,cos_th) + 1j * vD_m[n] * xi(n, kR) * (assoc_legendre_derivative(n, 1, cos_th) * (-sin_th))
             
             E_th *=  k / R * np.cos(phi)
             E_ph *= -k / R * np.sin(phi)
@@ -165,33 +224,85 @@ def calculate_electric_field_close(r: list[float], eps_compl: list[complex], lam
             vE_r[i,j] = E_r
             vE_theta[i,j] = E_th
             vE_phi[i,j] = E_ph
-    
-    # vE_theta[0] = vE_theta[1]
-    # #vE_theta[-1] = vE_theta[-2]
-    # vE_theta[len(vE_theta) // 2] = vE_theta[len(vE_theta) // 2 - 1]
-    
-    # vE_phi[0] = vE_phi[1]
-    # #vE_phi[-1] = vE_phi[-2]
-    # vE_phi[len(vE_phi) // 2] = vE_phi[len(vE_phi) // 2 - 1]
-    
-    # vE_r[0] = vE_r[1]
-    # #vE_r[-1] = vE_r[-2]
-    # vE_r[len(vE_r) // 2] = vE_r[len(vE_r) // 2 - 1]
 
     return vE_r, vE_theta, vE_phi
 
 
-def calculate_electric_field_close_vectorized(r: list[float], eps_compl: list[complex], lambda_: float, limits:list[float]):
+
+def calculate_electric_field_close_vectorized(r: list[float], eps_compl: list[complex], lambda_: float, limits:list[float])-> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
     
-    def assoc_legendre_derivative_vectorized(n: int, m: int, x: float) -> float:
-        x[np.isclose(x,1.0)] -= 1e-10
+    
+    def legendre_P1_all(n_max: int, x: np.ndarray) -> np.ndarray:
+        """
+        Compute P_n^1(x) for n = 1 to n_max - 1, and x as a vector or array.
         
-        return (n * x * sp.lpmv(m, n, x) - (n + m) * sp.lpmv(m, n - 1, x)) / (x ** 2 - 1)
+        Returns:
+            result: array of shape (n_max - 1, *x.shape) with P_n^1(x)
+        """
+        x = np.asarray(x)
+        shape = x.shape
+        P0 = np.ones_like(x)
+        P1 = x.copy()
+
+        # Store all P_n(x) up to n_max
+        P_all = np.zeros((n_max, *shape), dtype=np.float64)
+        P_all[0] = P0
+        P_all[1] = P1
+
+        for n in range(2, n_max):
+            P_all[n] = ((2 * n - 1) * x * P_all[n - 1] - (n - 1) * P_all[n - 2]) / n
+
+        # Compute derivative dP_n/dx using central difference
+        # P'_n(x) ≈ (P_n(x + h) - P_n(x - h)) / (2h), or analytical derivative
+        # But better: use the identity:
+        # P_n^1(x) = -sqrt(1 - x^2) * dP_n/dx
+
+        # Derivative recurrence:
+        # dP_n/dx = (n x P_n(x) - n P_{n-1}(x)) / (x^2 - 1)
+
+        P1n_all = np.zeros((n_max - 1, *shape), dtype=np.float64)
+        eps = 1e-12
+        denom = x**2 - 1
+        denom[np.abs(denom) < eps] = np.sign(denom[np.abs(denom) < eps]) * eps  # avoid zero division
+
+        for n in range(1, n_max):
+            dPn_dx = (n * x * P_all[n] - n * P_all[n - 1]) / denom
+            P1n_all[n - 1] = -np.sqrt(1 - x**2 + eps) * dPn_dx
+
+        return P1n_all
     
+    def assoc_legendre_P1_derivatives(n_max: int, x: np.ndarray) -> np.ndarray:
+        """
+        Compute d/dx P_n^1(x) for n = 1 to n_max - 1 and vector/array of x.
+        
+        Returns:
+            dPnm: array of shape (n_max - 1, *x.shape)
+        """
+        x = np.asarray(x)
+        shape = x.shape
+        eps = 1e-12
+        safe_x = x.copy()
+        safe_x[np.isclose(safe_x, 1.0)] -= 1e-10
+        denom = safe_x ** 2 - 1
+        denom[np.abs(denom) < eps] = np.sign(denom[np.abs(denom) < eps]) * eps  # avoid division by 0
+
+        # Get P_n^1 and P_{n-1}^1
+        Pnm = legendre_P1_all(n_max, x)            # shape: (n_max - 1, *x.shape)
+        Pnm_prev = np.vstack([np.zeros_like(x)[None, ...], Pnm[:-1]])  # pad P_0^1(x) = 0
+
+        n_array = np.arange(1, n_max).reshape(-1, *[1] * x.ndim)
+        # Vectorized formula:
+        dPnm = (n_array * safe_x * Pnm - (n_array + 1) * Pnm_prev) / denom
+
+        return dPnm
+
+
     k = 2 * np.pi / lambda_
     phi = 0
 
-    N_x = N_y = 300
+    cos_phi = np.cos(phi)
+
+    N_x = N_y = 200
     x_min, x_max, y_min, y_max = limits
     x_values = np.linspace(x_min, x_max, N_x)
     y_values = np.linspace(y_min, y_max, N_y)
@@ -209,15 +320,20 @@ def calculate_electric_field_close_vectorized(r: list[float], eps_compl: list[co
 
     cos_th = np.cos(theta)
     sin_th = np.sin(theta)
+    P1_vals = legendre_P1_all(N, cos_th)
+    dPnm_vals = assoc_legendre_P1_derivatives(N, cos_th)
 
+    kR = k * R
+    inv_R2 = np.zeros_like(R)
+    inv_R2[mask] = 1 / R[mask]**2
     for n in range(1, N):
-        Pnm = sp.lpmv(1, n, cos_th)
-        dPnm = assoc_legendre_derivative_vectorized(n, 1, cos_th)
+        Pnm = P1_vals[n-1]#sp.lpmv(1, n, cos_th)
+        dPnm = dPnm_vals[n-1]#assoc_legendre_derivative_vectorized(n, 1, cos_th)
 
-        hankel = sph_hankel(n, k * R)
-        hankel_deriv = sph_hankel_derivative(n, k * R)
+        hankel = xi(n, kR)
+        hankel_deriv = xi_derivative(n, kR)
 
-        term_Er = vD_e[n] * n * (n + 1) / R**2 * hankel * Pnm * np.cos(phi)
+        term_Er = vD_e[n] * n * (n + 1) * inv_R2 * hankel * Pnm * cos_phi
         term_Eth = (
             vD_e[n] * hankel_deriv * dPnm * (-sin_th) +
             1j * vD_m[n] / sin_th * hankel * Pnm
@@ -225,12 +341,12 @@ def calculate_electric_field_close_vectorized(r: list[float], eps_compl: list[co
         #term_Eph = (vD_e[n] / sin_th * hankel_deriv * Pnm +
         #            1j * vD_m[n] * hankel * dPnm * (-sin_th))
 
-        E_r += np.where(mask, term_Er, 0)
-        E_theta += np.where(mask, term_Eth, 0)
-        #E_phi += np.where(mask, term_Eph, 0)
+        E_r[mask] += term_Er[mask]
+        E_theta[mask] += term_Eth[mask]
+        #E_phi[mask] += term_Eph[mask]
 
-    E_theta *= k / R * np.cos(phi)
+    E_theta *= k / R * cos_phi
     #E_phi *= -k / R * np.sin(phi)
-
     
+
     return E_r, E_theta, E_phi
