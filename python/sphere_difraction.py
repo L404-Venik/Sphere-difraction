@@ -1,11 +1,11 @@
 import numpy as np
 import scipy.special as sp
-#from numba import njit
+import hashlib
+import os
 #import time
 
-N = 40  # глобальная переменная, определяющая предел суммирования
-iHO = 1  # порядок функции Ханкеля
-
+N = 40  # Global variable, defining summation limit
+iHO = 1  # order of Hankel function
 
 def xi(n: int, z: complex) -> complex: # x * h1_n(x)
     return z * ( sp.spherical_jn(n, z) + 1j * sp.spherical_yn(n, z))
@@ -25,8 +25,37 @@ def assoc_legendre_derivative(n: int, m: int, x: float) -> float:
 
     return (n * x * sp.lpmv(m, n, x) - (n + m) * sp.lpmv(m, n - 1, x)) / (x ** 2 - 1)
 
+def assoc_legendre_derivative_vectorized(n: int, m: int, x: np.ndarray) -> np.ndarray:
+    x = np.where(np.isclose(x, 1.0), x - 1e-10, x)
+    return (n * x * sp.lpmv(m, n, x) - (n + m) * sp.lpmv(m, n - 1, x)) / (x ** 2 - 1)
 
-def calculate_coefficients(k: float, eps: list[complex], r: list[float]) -> tuple[list[complex], list[complex]]:
+def calculate_coefficients(k: float, eps: list[complex], r: list[float], conducting_center: bool = True) -> tuple[list[complex], list[complex]]:
+    
+    def calculate_R_for_conducting_center(k, eps, r):
+        R_m = np.empty(N, dtype=np.complex128)
+        R_e = np.empty(N, dtype=np.complex128)
+        arg_R = k * np.sqrt(eps[1]) * r[0]
+        for n in range(1, N):
+            R_m[n] = - psi(n, arg_R) / xi(n, arg_R)
+            R_e[n] = - psi_derivative(n, arg_R) / xi_derivative(n, arg_R)
+
+        return R_m, R_e
+    
+    def calculate_R_for_dielectric_center(k, eps, r):
+        R_m = np.empty(N, dtype=np.complex128)
+        R_e = np.empty(N, dtype=np.complex128)
+        arg_R1 = k * np.sqrt(eps[1]) * r[0]
+        arg_R0 = k * np.sqrt(eps[0]) * r[0]
+        for n in range(1, N):
+
+            R_m[n] = (np.sqrt(eps[1]) * psi_derivative(n, arg_R1) * psi(n, arg_R0) - np.sqrt(eps[0]) * psi(n, arg_R1) * psi_derivative(n, arg_R0)) / \
+                     (np.sqrt(eps[0]) * xi(n, arg_R1) * psi_derivative(n, arg_R0) - np.sqrt(eps[1]) * xi_derivative(n, arg_R1) * psi(n, arg_R0))
+            
+            R_e[n] = (np.sqrt(eps[0]) * psi_derivative(n, arg_R1) * psi(n, arg_R0) - np.sqrt(eps[1]) * psi(n, arg_R1) * psi_derivative(n, arg_R0)) / \
+                     (np.sqrt(eps[1]) * xi(n, arg_R1) * psi_derivative(n, arg_R0) - np.sqrt(eps[0]) * xi_derivative(n, arg_R1) * psi(n, arg_R0))
+
+        return R_m, R_e
+    
     layers_number = len(r)
     D_e, D_m = [0], [0]
     
@@ -61,15 +90,16 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float]) -> tupl
             T_m[n] @= np.linalg.inv(B_m) @ A_m
             T_e[n] @= np.linalg.inv(B_e) @ A_e
     
-    arg_R = k * np.sqrt(eps[1]) * r[0]
+    if(conducting_center):
+        R_m, R_e = calculate_R_for_conducting_center(k, eps, r)
+    else:
+        R_m, R_e = calculate_R_for_dielectric_center(k, eps, r)
+
     for n in range(1, N):
         c_n = (1j ** (n - 1)) / (k ** 2) * (2 * n + 1) / (n * (n + 1))
         
-        R_m = - psi(n, arg_R) / xi(n, arg_R)
-        R_e = - psi_derivative(n, arg_R) / xi_derivative(n, arg_R)
-        
-        d_e_n = c_n * (T_e[n][1, 0] + T_e[n][1, 1] * R_e) / (T_e[n][0, 0] + T_e[n][0, 1] * R_e)
-        d_m_n = c_n * (T_m[n][1, 0] + T_m[n][1, 1] * R_m) / (T_m[n][0, 0] + T_m[n][0, 1] * R_m)
+        d_e_n = c_n * (T_e[n][1, 0] + T_e[n][1, 1] * R_e[n]) / (T_e[n][0, 0] + T_e[n][0, 1] * R_e[n])
+        d_m_n = c_n * (T_m[n][1, 0] + T_m[n][1, 1] * R_m[n]) / (T_m[n][0, 0] + T_m[n][0, 1] * R_m[n])
         
         D_e.append(d_e_n)
         D_m.append(d_m_n)
@@ -230,71 +260,45 @@ def calculate_electric_field_close(r: list[float], eps_compl: list[complex], lam
 
 
 def calculate_electric_field_close_vectorized(r: list[float], eps_compl: list[complex], lambda_: float, limits:list[float])-> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
-    
-    
-    def legendre_P1_all(n_max: int, x: np.ndarray) -> np.ndarray:
-        """
-        Compute P_n^1(x) for n = 1 to n_max - 1, and x as a vector or array.
         
-        Returns:
-            result: array of shape (n_max - 1, *x.shape) with P_n^1(x)
-        """
-        x = np.asarray(x)
-        shape = x.shape
-        P0 = np.ones_like(x)
-        P1 = x.copy()
+    def generate_cache_filename(cos_th: np.ndarray, kR: np.ndarray, N: int, cache_dir="field_cache"):
+        os.makedirs(cache_dir, exist_ok=True)
+        h = hashlib.sha256()
+        h.update(cos_th.astype(np.float32).tobytes())
+        h.update(kR.astype(np.float32).tobytes())
+        h.update(str(N).encode())
+        hash_str = h.hexdigest()
+        return os.path.join(cache_dir, f"field_cache_{hash_str}.npz")
 
-        # Store all P_n(x) up to n_max
-        P_all = np.zeros((n_max, *shape), dtype=np.float64)
-        P_all[0] = P0
-        P_all[1] = P1
+    def load_or_compute_field_terms(cos_th: np.ndarray, kR: np.ndarray, N: int):
+        filename = generate_cache_filename(cos_th, kR, N)
 
-        for n in range(2, n_max):
-            P_all[n] = ((2 * n - 1) * x * P_all[n - 1] - (n - 1) * P_all[n - 2]) / n
+        if os.path.exists(filename):
+            data = np.load(filename, allow_pickle=True)
+            #print(f"[cache] Loaded field terms from {filename}")
+            return data['Pnm'], data['dPnm'], data['hankel'], data['hankel_deriv']
 
-        # Compute derivative dP_n/dx using central difference
-        # P'_n(x) ≈ (P_n(x + h) - P_n(x - h)) / (2h), or analytical derivative
-        # But better: use the identity:
-        # P_n^1(x) = -sqrt(1 - x^2) * dP_n/dx
+        #print(f"[compute] Generating field terms and saving to {filename}")
+        shape = kR.shape
+        Pnm = np.empty((N, *shape), dtype=np.float64)
+        dPnm = np.empty_like(Pnm)
+        hankel = np.empty((N, *shape), dtype=np.complex128)
+        hankel_deriv = np.empty_like(hankel)
 
-        # Derivative recurrence:
-        # dP_n/dx = (n x P_n(x) - n P_{n-1}(x)) / (x^2 - 1)
+        for n in range(1, N):
+            Pnm[n] = sp.lpmv(1, n, cos_th)
+            dPnm[n] = assoc_legendre_derivative_vectorized(n, 1, cos_th)
 
-        P1n_all = np.zeros((n_max - 1, *shape), dtype=np.float64)
-        eps = 1e-12
-        denom = x**2 - 1
-        denom[np.abs(denom) < eps] = np.sign(denom[np.abs(denom) < eps]) * eps  # avoid zero division
+            jn = sp.spherical_jn(n, kR)
+            yn = sp.spherical_yn(n, kR)
+            jn_p = sp.spherical_jn(n, kR, derivative=True)
+            yn_p = sp.spherical_yn(n, kR, derivative=True)
 
-        for n in range(1, n_max):
-            dPn_dx = (n * x * P_all[n] - n * P_all[n - 1]) / denom
-            P1n_all[n - 1] = -np.sqrt(1 - x**2 + eps) * dPn_dx
+            hankel[n] = kR * (jn + 1j * yn)
+            hankel_deriv[n] = kR * (jn_p + 1j * yn_p) + (jn + 1j * yn)
 
-        return P1n_all
-    
-    def assoc_legendre_P1_derivatives(n_max: int, x: np.ndarray) -> np.ndarray:
-        """
-        Compute d/dx P_n^1(x) for n = 1 to n_max - 1 and vector/array of x.
-        
-        Returns:
-            dPnm: array of shape (n_max - 1, *x.shape)
-        """
-        x = np.asarray(x)
-        shape = x.shape
-        eps = 1e-12
-        safe_x = x.copy()
-        safe_x[np.isclose(safe_x, 1.0)] -= 1e-10
-        denom = safe_x ** 2 - 1
-        denom[np.abs(denom) < eps] = np.sign(denom[np.abs(denom) < eps]) * eps  # avoid division by 0
-
-        # Get P_n^1 and P_{n-1}^1
-        Pnm = legendre_P1_all(n_max, x)            # shape: (n_max - 1, *x.shape)
-        Pnm_prev = np.vstack([np.zeros_like(x)[None, ...], Pnm[:-1]])  # pad P_0^1(x) = 0
-
-        n_array = np.arange(1, n_max).reshape(-1, *[1] * x.ndim)
-        # Vectorized formula:
-        dPnm = (n_array * safe_x * Pnm - (n_array + 1) * Pnm_prev) / denom
-
-        return dPnm
+        np.savez_compressed(filename, Pnm=Pnm, dPnm=dPnm, hankel=hankel, hankel_deriv=hankel_deriv)
+        return Pnm, dPnm, hankel, hankel_deriv
 
 
     k = 2 * np.pi / lambda_
@@ -320,23 +324,17 @@ def calculate_electric_field_close_vectorized(r: list[float], eps_compl: list[co
 
     cos_th = np.cos(theta)
     sin_th = np.sin(theta)
-    P1_vals = legendre_P1_all(N, cos_th)
-    dPnm_vals = assoc_legendre_P1_derivatives(N, cos_th)
-
     kR = k * R
+    Pnm_vals, dPnm_vals, hankel_vals, hankel_deriv_vals = load_or_compute_field_terms(cos_th, kR, N)
+
     inv_R2 = np.zeros_like(R)
     inv_R2[mask] = 1 / R[mask]**2
     for n in range(1, N):
-        Pnm = P1_vals[n-1]#sp.lpmv(1, n, cos_th)
-        dPnm = dPnm_vals[n-1]#assoc_legendre_derivative_vectorized(n, 1, cos_th)
 
-        hankel = xi(n, kR)
-        hankel_deriv = xi_derivative(n, kR)
-
-        term_Er = vD_e[n] * n * (n + 1) * inv_R2 * hankel * Pnm * cos_phi
+        term_Er = vD_e[n] * n * (n + 1) * inv_R2 * hankel_vals[n] * Pnm_vals[n] * cos_phi
         term_Eth = (
-            vD_e[n] * hankel_deriv * dPnm * (-sin_th) +
-            1j * vD_m[n] / sin_th * hankel * Pnm
+            vD_e[n] * hankel_deriv_vals[n] * dPnm_vals[n] * (-sin_th) +
+            1j * vD_m[n] / sin_th * hankel_vals[n] * Pnm_vals[n]
         )
         #term_Eph = (vD_e[n] / sin_th * hankel_deriv * Pnm +
         #            1j * vD_m[n] * hankel * dPnm * (-sin_th))
