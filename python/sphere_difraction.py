@@ -1,10 +1,11 @@
 import numpy as np
+from numpy.linalg import solve
 import scipy.special as sp
 import hashlib
 import os
-#import time
+import time
 
-N = 40  # Global variable, defining summation limit
+N = 20  # Global variable, defining summation limit
 iHO = 1  # order of Hankel function
 
 def xi(n: int, z: complex) -> complex: # x * h1_n(x)
@@ -32,63 +33,74 @@ def assoc_legendre_derivative_vectorized(n: int, m: int, x: np.ndarray) -> np.nd
 def calculate_coefficients(k: float, eps: list[complex], r: list[float], conducting_center: bool = True) -> tuple[list[complex], list[complex]]:
     
     def calculate_R_for_conducting_center(k, eps, r):
-        R_m = np.empty(N, dtype=np.complex128)
-        R_e = np.empty(N, dtype=np.complex128)
+        
         arg_R = k * np.sqrt(eps[1]) * r[0]
-        for n in range(1, N):
-            R_m[n] = - psi(n, arg_R) / xi(n, arg_R)
-            R_e[n] = - psi_derivative(n, arg_R) / xi_derivative(n, arg_R)
+        Orders = np.arange(N)
+
+        R_m = - psi(Orders, arg_R) / xi(Orders, arg_R)
+        R_e = - psi_derivative(Orders, arg_R) / xi_derivative(Orders, arg_R)
 
         return R_m, R_e
     
     def calculate_R_for_dielectric_center(k, eps, r):
-        R_m = np.empty(N, dtype=np.complex128)
-        R_e = np.empty(N, dtype=np.complex128)
+        
+        R_m = np.zeros(N, dtype=np.complex128)
+        R_e = np.zeros(N, dtype=np.complex128)
         arg_R1 = k * np.sqrt(eps[1]) * r[0]
         arg_R0 = k * np.sqrt(eps[0]) * r[0]
-        for n in range(1, N):
 
-            R_m[n] = (np.sqrt(eps[1]) * psi_derivative(n, arg_R1) * psi(n, arg_R0) - np.sqrt(eps[0]) * psi(n, arg_R1) * psi_derivative(n, arg_R0)) / \
-                     (np.sqrt(eps[0]) * xi(n, arg_R1) * psi_derivative(n, arg_R0) - np.sqrt(eps[1]) * xi_derivative(n, arg_R1) * psi(n, arg_R0))
-            
-            R_e[n] = (np.sqrt(eps[0]) * psi_derivative(n, arg_R1) * psi(n, arg_R0) - np.sqrt(eps[1]) * psi(n, arg_R1) * psi_derivative(n, arg_R0)) / \
-                     (np.sqrt(eps[1]) * xi(n, arg_R1) * psi_derivative(n, arg_R0) - np.sqrt(eps[0]) * xi_derivative(n, arg_R1) * psi(n, arg_R0))
+        if(abs(arg_R1 - arg_R0) < 1e-14):
+            return R_m, R_e
+
+        Orders = np.arange(N)
+        
+        R_m = (np.sqrt(eps[1]) * psi_derivative(Orders, arg_R1) * psi(Orders, arg_R0) - np.sqrt(eps[0]) * psi(Orders, arg_R1) * psi_derivative(Orders, arg_R0)) / \
+                    (np.sqrt(eps[0]) * xi(Orders, arg_R1) * psi_derivative(Orders, arg_R0) - np.sqrt(eps[1]) * xi_derivative(Orders, arg_R1) * psi(Orders, arg_R0))
+        
+        R_e = (np.sqrt(eps[0]) * psi_derivative(Orders, arg_R1) * psi(Orders, arg_R0) - np.sqrt(eps[1]) * psi(Orders, arg_R1) * psi_derivative(Orders, arg_R0)) / \
+                    (np.sqrt(eps[1]) * xi(Orders, arg_R1) * psi_derivative(Orders, arg_R0) - np.sqrt(eps[0]) * xi_derivative(Orders, arg_R1) * psi(Orders, arg_R0))
 
         return R_m, R_e
     
     layers_number = len(r)
-    D_e, D_m = [0], [0]
+    D_e = np.empty(N, dtype=np.complex128)
+    D_m = np.empty(N, dtype=np.complex128)
     
     T_e = [np.eye(2, dtype=np.complex128) for _ in range(N)]
     T_m = [np.eye(2, dtype=np.complex128) for _ in range(N)]
     
-    for i in range(layers_number):
+    Orders = np.arange(N)
+    for i in range(1, layers_number):
+
+        if(abs(eps[i] - eps[i + 1]) < 1e-14):
+            continue
+
+        arg_A = k * np.sqrt(eps[i]) * r[i]
+        arg_B = k * np.sqrt(eps[i + 1]) * r[i]
+            
+        A_m = np.array([
+            [                             psi(Orders, arg_A),                              xi(Orders, arg_A)],
+            [np.sqrt(eps[i]) * psi_derivative(Orders, arg_A), np.sqrt(eps[i]) * xi_derivative(Orders, arg_A)]
+        ], dtype=np.complex128)
+
+        A_m = A_m.transpose(2, 0, 1)
+
+        A_e = A_m.copy()    
+        A_e[:, 0, :] *= eps[i]  # A_e is A_m with first row multiplied by eps[i]
+
+        B_m = np.array([
+            [                                 psi(Orders, arg_B),                                  xi(Orders, arg_B)],
+            [np.sqrt(eps[i + 1]) * psi_derivative(Orders, arg_B), np.sqrt(eps[i + 1]) * xi_derivative(Orders, arg_B)]
+        ], dtype=np.complex128)
+            
+        B_m = B_m.transpose(2, 0, 1)
+
+        B_e = B_m.copy()    
+        B_e[:, 0, :] *= eps[i + 1]  # B_e is B_m with first row multiplied by eps[i + 1]
+
         for n in range(1, N):
-            arg_A = k * np.sqrt(eps[i]) * r[i]
-            arg_B = k * np.sqrt(eps[i + 1]) * r[i]
-            
-            A_m = np.array([
-                [                              psi(n,arg_A),                              xi(n, arg_A)],
-                [np.sqrt(eps[i]) * psi_derivative(n, arg_A), np.sqrt(eps[i]) * xi_derivative(n, arg_A)]
-            ], dtype=np.complex128)
-            
-            A_e = np.array([
-                [eps[i] * A_m[0, 0], eps[i] * A_m[0, 1]],
-                [         A_m[1, 0],          A_m[1, 1]]
-            ], dtype=np.complex128)
-            
-            B_m = np.array([
-                [                                 psi(n, arg_B),                                  xi(n, arg_B)],
-                [np.sqrt(eps[i + 1]) * psi_derivative(n, arg_B), np.sqrt(eps[i + 1]) * xi_derivative(n, arg_B)]
-            ], dtype=np.complex128)
-            
-            B_e = np.array([
-                [eps[i + 1] * B_m[0, 0], eps[i + 1] * B_m[0, 1]],
-                [             B_m[1, 0],              B_m[1, 1]]
-            ], dtype=np.complex128)
-            
-            T_m[n] @= np.linalg.inv(B_m) @ A_m
-            T_e[n] @= np.linalg.inv(B_e) @ A_e
+            T_m[n] @= np.linalg.inv(B_m[n]) @ A_m[n]
+            T_e[n] @= np.linalg.inv(B_e[n]) @ A_e[n]
     
     if(conducting_center):
         R_m, R_e = calculate_R_for_conducting_center(k, eps, r)
@@ -101,23 +113,25 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
         d_e_n = c_n * (T_e[n][1, 0] + T_e[n][1, 1] * R_e[n]) / (T_e[n][0, 0] + T_e[n][0, 1] * R_e[n])
         d_m_n = c_n * (T_m[n][1, 0] + T_m[n][1, 1] * R_m[n]) / (T_m[n][0, 0] + T_m[n][0, 1] * R_m[n])
         
-        D_e.append(d_e_n)
-        D_m.append(d_m_n)
+        D_e[n] = d_e_n
+        D_m[n] = d_m_n
     
     return D_e, D_m
 
 
-def calculate_electric_field_far(r: list[float], eps_compl: list[complex], lambda_: float) -> tuple[list[complex], list[complex]]:
+def calculate_electric_field_far(r: list[float], eps_compl: list[complex], lambda_: float, conducting_center: bool = True) -> tuple[list[complex], list[complex]]:
     k = 2 * np.pi / lambda_
     x = r[-1] * 10
     phi = 0
+    cos_phi = np.cos(phi)
+    sin_phi = np.sin(phi)
     
     vE_theta = []
     vE_phi = []
     
-    vD_e, vD_m = calculate_coefficients(k, eps_compl, r)
+    vD_e, vD_m = calculate_coefficients(k, eps_compl, r, conducting_center)
     
-    for theta in np.arange(0.0001, 2 * np.pi, np.pi / (5 * 36.0)):
+    for theta in np.arange(0.0001, 2 * np.pi, np.pi / (15 * 36.0)):
         E_th, E_ph = 0, 0
         S_th, S_ph = 0, 0
         
@@ -126,25 +140,26 @@ def calculate_electric_field_far(r: list[float], eps_compl: list[complex], lambd
         
         i_pow = -1j
         
+        first_terms = sp.lpmv(1, np.arange(N), cos_th) / sin_th
+        second_terms = assoc_legendre_derivative(np.arange(N), 1, cos_th) * sin_th
+
         for n in range(1, N):
-            first_term = sp.lpmv(1, n, cos_th) / sin_th
-            second_term = assoc_legendre_derivative(n, 1, cos_th) * sin_th
             
-            if not np.isfinite(first_term):
-                first_term = 0.0
-            if not np.isfinite(second_term):
-                second_term = 0.0
+            if not np.isfinite(first_terms[n]):
+                first_terms[n] = 0.0
+            if not np.isfinite(second_terms[n]):
+                second_terms[n] = 0.0
             
-            S_th += i_pow * (vD_m[n] * first_term - vD_e[n] * second_term)
-            S_ph += i_pow * (vD_m[n] * second_term - vD_e[n] * first_term)
+            S_th += i_pow * (vD_m[n] * first_terms[n] - vD_e[n] * second_terms[n])
+            S_ph += i_pow * (vD_m[n] * second_terms[n] - vD_e[n] * first_terms[n])
             
             i_pow *= -1j
         
         S_th *= k * k
         S_ph *= k * k
         
-        E_th = S_th * (np.exp(1j * k * x) * np.cos(phi) / (k * x))
-        E_ph = S_ph * (np.exp(1j * k * x) * np.sin(phi) / (k * x))
+        E_th = S_th * (np.exp(1j * k * x) * cos_phi / (k * x))
+        E_ph = S_ph * (np.exp(1j * k * x) * sin_phi / (k * x))
         
         vE_theta.append(E_th)
         vE_phi.append(E_ph)
@@ -259,26 +274,25 @@ def calculate_electric_field_close(r: list[float], eps_compl: list[complex], lam
 
 
 
-def calculate_electric_field_close_vectorized(r: list[float], eps_compl: list[complex], lambda_: float, limits:list[float])-> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
+def calculate_electric_field_close_vectorized(r: list[float], eps_compl: list[complex], lambda_: float, limits:list[float], conducting_center: bool = True)-> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
         
-    def generate_cache_filename(cos_th: np.ndarray, kR: np.ndarray, N: int, cache_dir="field_cache"):
-        os.makedirs(cache_dir, exist_ok=True)
-        h = hashlib.sha256()
-        h.update(cos_th.astype(np.float32).tobytes())
-        h.update(kR.astype(np.float32).tobytes())
-        h.update(str(N).encode())
-        hash_str = h.hexdigest()
-        return os.path.join(cache_dir, f"field_cache_{hash_str}.npz")
-
     def load_or_compute_field_terms(cos_th: np.ndarray, kR: np.ndarray, N: int):
+
+        def generate_cache_filename(cos_th: np.ndarray, kR: np.ndarray, N: int, cache_dir="field_cache"):
+            os.makedirs(cache_dir, exist_ok=True)
+            h = hashlib.sha256()
+            h.update(cos_th.astype(np.float32).tobytes())
+            h.update(kR.astype(np.float32).tobytes())
+            h.update(str(N).encode())
+            hash_str = h.hexdigest()
+            return os.path.join(cache_dir, f"field_cache_{hash_str}.npz")
+        
         filename = generate_cache_filename(cos_th, kR, N)
 
         if os.path.exists(filename):
             data = np.load(filename, allow_pickle=True)
-            #print(f"[cache] Loaded field terms from {filename}")
             return data['Pnm'], data['dPnm'], data['hankel'], data['hankel_deriv']
 
-        #print(f"[compute] Generating field terms and saving to {filename}")
         shape = kR.shape
         Pnm = np.empty((N, *shape), dtype=np.float64)
         dPnm = np.empty_like(Pnm)
@@ -297,21 +311,24 @@ def calculate_electric_field_close_vectorized(r: list[float], eps_compl: list[co
             hankel[n] = kR * (jn + 1j * yn)
             hankel_deriv[n] = kR * (jn_p + 1j * yn_p) + (jn + 1j * yn)
 
+
         np.savez_compressed(filename, Pnm=Pnm, dPnm=dPnm, hankel=hankel, hankel_deriv=hankel_deriv)
         return Pnm, dPnm, hankel, hankel_deriv
 
-
+    start = time.time()
     k = 2 * np.pi / lambda_
     phi = 0
 
     cos_phi = np.cos(phi)
 
-    N_x = N_y = 200
+    N_x = N_y = 800
     x_min, x_max, y_min, y_max = limits
     x_values = np.linspace(x_min, x_max, N_x)
     y_values = np.linspace(y_min, y_max, N_y)
-    
-    vD_e, vD_m = calculate_coefficients(k, eps_compl, r)
+
+    start_coefficient = time.time()
+    vD_e, vD_m = calculate_coefficients(k, eps_compl, r, conducting_center)
+    end_coefficients = time.time()
 
     X, Y = np.meshgrid(x_values, y_values, indexing='ij')
     R = np.sqrt(X**2 + Y**2)
@@ -325,8 +342,9 @@ def calculate_electric_field_close_vectorized(r: list[float], eps_compl: list[co
     cos_th = np.cos(theta)
     sin_th = np.sin(theta)
     kR = k * R
+    start_field_terms = time.time()
     Pnm_vals, dPnm_vals, hankel_vals, hankel_deriv_vals = load_or_compute_field_terms(cos_th, kR, N)
-
+    end_field_terms = time.time()
     inv_R2 = np.zeros_like(R)
     inv_R2[mask] = 1 / R[mask]**2
     for n in range(1, N):
@@ -345,6 +363,11 @@ def calculate_electric_field_close_vectorized(r: list[float], eps_compl: list[co
 
     E_theta *= k / R * cos_phi
     #E_phi *= -k / R * np.sin(phi)
-    
+    end = time.time()
+
+    # print("coefficients tiem", end_coefficients - start_coefficient)
+    # print("field terms", end_field_terms - start_field_terms)
+    # print("loop", end - end_field_terms)
+    # print("whole time", end-start)
 
     return E_r, E_theta, E_phi
