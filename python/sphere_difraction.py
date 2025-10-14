@@ -5,7 +5,7 @@ import hashlib
 import os
 import time
 
-N = 20  # Global variable, defining summation limit
+N_max = 50  # Global variable, defining summation limit
 iHO = 1  # order of Hankel function
 
 def xi(n: int, z: complex) -> complex: # x * h1_n(x)
@@ -35,7 +35,7 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
     def calculate_R_for_conducting_center(k, eps, r):
         
         arg_R = k * np.sqrt(eps[1]) * r[0]
-        Orders = np.arange(N)
+        Orders = np.arange(N_max)
 
         R_m = - psi(Orders, arg_R) / xi(Orders, arg_R)
         R_e = - psi_derivative(Orders, arg_R) / xi_derivative(Orders, arg_R)
@@ -44,15 +44,15 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
     
     def calculate_R_for_dielectric_center(k, eps, r):
         
-        R_m = np.zeros(N, dtype=np.complex128)
-        R_e = np.zeros(N, dtype=np.complex128)
+        R_m = np.zeros(N_max, dtype=np.complex128)
+        R_e = np.zeros(N_max, dtype=np.complex128)
         arg_R1 = k * np.sqrt(eps[1]) * r[0]
         arg_R0 = k * np.sqrt(eps[0]) * r[0]
 
         if(abs(arg_R1 - arg_R0) < 1e-14):
             return R_m, R_e
 
-        Orders = np.arange(N)
+        Orders = np.arange(N_max)
         
         R_m = (np.sqrt(eps[1]) * psi_derivative(Orders, arg_R1) * psi(Orders, arg_R0) - np.sqrt(eps[0]) * psi(Orders, arg_R1) * psi_derivative(Orders, arg_R0)) / \
                     (np.sqrt(eps[0]) * xi(Orders, arg_R1) * psi_derivative(Orders, arg_R0) - np.sqrt(eps[1]) * xi_derivative(Orders, arg_R1) * psi(Orders, arg_R0))
@@ -63,13 +63,13 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
         return R_m, R_e
     
     layers_number = len(r)
-    D_e = np.empty(N, dtype=np.complex128)
-    D_m = np.empty(N, dtype=np.complex128)
+    D_e = np.zeros(N_max, dtype=np.complex128)
+    D_m = np.zeros(N_max, dtype=np.complex128)
     
-    T_e = [np.eye(2, dtype=np.complex128) for _ in range(N)]
-    T_m = [np.eye(2, dtype=np.complex128) for _ in range(N)]
+    T_e = [np.eye(2, dtype=np.complex128) for _ in range(N_max)]
+    T_m = [np.eye(2, dtype=np.complex128) for _ in range(N_max)]
     
-    Orders = np.arange(N)
+    Orders = np.arange(N_max)
     for i in range(1, layers_number):
 
         if(abs(eps[i] - eps[i + 1]) < 1e-14):
@@ -98,7 +98,7 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
         B_e = B_m.copy()    
         B_e[:, 0, :] *= eps[i + 1]  # B_e is B_m with first row multiplied by eps[i + 1]
 
-        for n in range(1, N):
+        for n in range(1, N_max):
             T_m[n] @= np.linalg.inv(B_m[n]) @ A_m[n]
             T_e[n] @= np.linalg.inv(B_e[n]) @ A_e[n]
     
@@ -107,120 +107,101 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
     else:
         R_m, R_e = calculate_R_for_dielectric_center(k, eps, r)
 
-    for n in range(1, N):
+    for n in range(1, N_max):
         c_n = (1j ** (n - 1)) / (k ** 2) * (2 * n + 1) / (n * (n + 1))
         
-        d_e_n = c_n * (T_e[n][1, 0] + T_e[n][1, 1] * R_e[n]) / (T_e[n][0, 0] + T_e[n][0, 1] * R_e[n])
-        d_m_n = c_n * (T_m[n][1, 0] + T_m[n][1, 1] * R_m[n]) / (T_m[n][0, 0] + T_m[n][0, 1] * R_m[n])
-        
-        D_e[n] = d_e_n
-        D_m[n] = d_m_n
+        D_e[n] = c_n * (T_e[n][1, 0] + T_e[n][1, 1] * R_e[n]) / (T_e[n][0, 0] + T_e[n][0, 1] * R_e[n])
+        D_m[n] = c_n * (T_m[n][1, 0] + T_m[n][1, 1] * R_m[n]) / (T_m[n][0, 0] + T_m[n][0, 1] * R_m[n])
+
+        if(np.abs(D_e[n]) < 1e-40 and np.abs(D_m[n]) < 1e-40): # stop when values below threshold
+            break
     
-    return D_e, D_m
+    return n, D_e, D_m
+
+
+def calculate_S(N, D_e, D_m):
+
+    M = 1000
+    S_th = np.zeros(M, dtype=np.complex128)
+    S_ph = np.zeros(M, dtype=np.complex128)
+
+    i_pow = (-1j) ** np.arange(1, N) # Vector of (-1j)**n
+    for m in range(M):
+        theta = 0.0001 + m / M * 2 * np.pi
+
+        cos_th = np.cos(theta)
+        sin_th = np.sin(theta)
+
+        first_terms = sp.lpmv(1, np.arange(N), cos_th) / sin_th
+        second_terms = assoc_legendre_derivative(np.arange(N), 1, cos_th) * sin_th
+
+        # Replace invalid entries
+        first_terms = np.where(np.isfinite(first_terms), first_terms, 0.0)
+        second_terms = np.where(np.isfinite(second_terms), second_terms, 0.0)
+
+        S_th[m] += np.sum(i_pow * (D_m[1:N] * first_terms[1:N] - D_e[1:N] * second_terms[1:N]))
+        S_ph[m] += np.sum(i_pow * (D_m[1:N] * second_terms[1:N] - D_e[1:N] * first_terms[1:N]))
+
+    return S_th, S_ph
 
 
 def calculate_electric_field_far(r: list[float], eps_compl: list[complex], lambda_: float, conducting_center: bool = True) -> tuple[list[complex], list[complex]]:
     k = 2 * np.pi / lambda_
+    
+    N, D_e, D_m = calculate_coefficients(k, eps_compl, r, conducting_center)
+    S_th, S_ph = calculate_S(N, D_e, D_m)
+    
     x = r[-1] * 10
     phi = 0
     cos_phi = np.cos(phi)
     sin_phi = np.sin(phi)
-    
-    vE_theta = []
-    vE_phi = []
-    
-    vD_e, vD_m = calculate_coefficients(k, eps_compl, r, conducting_center)
-    
-    for theta in np.arange(0.0001, 2 * np.pi, np.pi / (15 * 36.0)):
-        E_th, E_ph = 0, 0
-        S_th, S_ph = 0, 0
-        
-        cos_th = np.cos(theta)
-        sin_th = np.sin(theta)
-        
-        i_pow = -1j
-        
-        first_terms = sp.lpmv(1, np.arange(N), cos_th) / sin_th
-        second_terms = assoc_legendre_derivative(np.arange(N), 1, cos_th) * sin_th
 
-        for n in range(1, N):
-            
-            if not np.isfinite(first_terms[n]):
-                first_terms[n] = 0.0
-            if not np.isfinite(second_terms[n]):
-                second_terms[n] = 0.0
-            
-            S_th += i_pow * (vD_m[n] * first_terms[n] - vD_e[n] * second_terms[n])
-            S_ph += i_pow * (vD_m[n] * second_terms[n] - vD_e[n] * first_terms[n])
-            
-            i_pow *= -1j
-        
-        S_th *= k * k
-        S_ph *= k * k
-        
-        E_th = S_th * (np.exp(1j * k * x) * cos_phi / (k * x))
-        E_ph = S_ph * (np.exp(1j * k * x) * sin_phi / (k * x))
-        
-        vE_theta.append(E_th)
-        vE_phi.append(E_ph)
+    E_theta = S_th * k**2 * (np.exp(1j * k * x) * cos_phi / (k * x))
+    E_phi =   S_ph * k**2 * (np.exp(1j * k * x) * sin_phi / (k * x))
     
-    vE_theta[0] = vE_theta[1]
-    #vE_theta[-1] = vE_theta[-2]
-    vE_theta[len(vE_theta) // 2] = vE_theta[len(vE_theta) // 2 - 1]
+    E_theta[0] = E_theta[-1]
+    E_phi[0] = E_phi[-1]
     
-    vE_phi[0] = vE_phi[1]
-    #vE_phi[-1] = vE_phi[-2]
-    vE_phi[len(vE_phi) // 2] = vE_phi[len(vE_phi) // 2 - 1]
-    
-    return vE_theta, vE_phi
+    return E_theta, E_phi
 
 
 
 def calculate_electric_field_close_radial(r: list[float], eps_compl: list[complex], lambda_: float, R: float) -> tuple[list[complex], list[complex], list[complex]]:
     k = 2 * np.pi / lambda_
     phi = 0
-    
-    vE_theta = []
-    vE_phi = []
-    vE_r = []
-    
-    vD_e, vD_m = calculate_coefficients(k, eps_compl, r)
-    
+    cos_phi = np.cos(phi)
+    sin_phi = np.sin(phi)
 
-    for theta in np.arange(0.001, 2 * np.pi, np.pi / (5 * 36.0)):
-        E_r, E_th, E_ph = 0, 0, 0
+    N, vD_e, vD_m = calculate_coefficients(k, eps_compl, r)
+    
+    M = 1000
+    E_r = np.zeros(M, dtype=np.complex128)
+    E_theta = np.zeros(M, dtype=np.complex128)
+    E_phi = np.zeros(M, dtype=np.complex128)
+
+    for m in range(M):
+        theta = 0.0001 + 2 * np.pi * m / M
         
         cos_th = np.cos(theta)
         sin_th = np.sin(theta)
         
         for n in range(1, N):
 
-            E_r += vD_e[n] * n * (n + 1) / R**2 * xi(n, k*R) * sp.lpmv(1, n, cos_th) * np.cos(phi)
+            E_r[m] += vD_e[n] * n * (n + 1) / R**2 * xi(n, k*R) * sp.lpmv(1, n, cos_th) * cos_phi
 
-            E_th += vD_e[n] * xi_derivative(n, k * R) * (assoc_legendre_derivative(n, 1, cos_th) * (-sin_th)) + 1j * vD_m[n] /sin_th * xi(n, k*R) * sp.lpmv(1,n,cos_th)
+            E_theta[m] += vD_e[n] * xi_derivative(n, k * R) * (assoc_legendre_derivative(n, 1, cos_th) * (-sin_th)) + 1j * vD_m[n] /sin_th * xi(n, k*R) * sp.lpmv(1,n,cos_th)
 
-            E_ph += vD_e[n] / sin_th * xi_derivative(n, k*R) *sp.lpmv(1,n,cos_th) + 1j * vD_m[n] * xi(n, k * R) * (assoc_legendre_derivative(n, 1, cos_th) * (-sin_th))
+            E_phi[m] += vD_e[n] / sin_th * xi_derivative(n, k*R) *sp.lpmv(1,n,cos_th) + 1j * vD_m[n] * xi(n, k * R) * (assoc_legendre_derivative(n, 1, cos_th) * (-sin_th))
         
-        E_th *=  k / R * np.cos(phi)
-        E_ph *= -k / R * np.sin(phi)
-        
-        vE_r.append(E_r)
-        vE_theta.append(E_th)
-        vE_phi.append(E_ph)
     
-    vE_theta[0] = vE_theta[1]
-    # #vE_theta[-1] = vE_theta[-2]
-    vE_theta[len(vE_theta) // 2] = vE_theta[len(vE_theta) // 2 - 1]
+    E_theta *=  k / R * cos_phi
+    E_phi *= -k / R * sin_phi
     
-    vE_phi[0] = vE_phi[1]
-    # #vE_phi[-1] = vE_phi[-2]
-    vE_phi[len(vE_phi) // 2] = vE_phi[len(vE_phi) // 2 - 1]
-    
-    vE_r[0] = vE_r[1]
-    # #vE_r[-1] = vE_r[-2]
-    vE_r[len(vE_r) // 2] = vE_r[len(vE_r) // 2 - 1]
+    E_theta[0] = E_theta[-1]
+    E_phi[0] = E_phi[-1]
+    E_r[0] = E_r[-1]
 
-    return vE_r, vE_theta, vE_phi
+    return E_r, E_theta, E_phi
 
 
 def calculate_electric_field_close(r: list[float], eps_compl: list[complex], lambda_: float, limits:list[float]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
@@ -236,7 +217,7 @@ def calculate_electric_field_close(r: list[float], eps_compl: list[complex], lam
     vE_phi = np.zeros((N_x,N_y),dtype=np.complex128)
     vE_r = np.zeros((N_x,N_y),dtype=np.complex128)
     
-    vD_e, vD_m = calculate_coefficients(k, eps_compl, r)
+    N, vD_e, vD_m = calculate_coefficients(k, eps_compl, r)
 
     cos_phi = np.cos(phi)
 
@@ -321,13 +302,13 @@ def calculate_electric_field_close_vectorized(r: list[float], eps_compl: list[co
 
     cos_phi = np.cos(phi)
 
-    N_x = N_y = 800
+    N_x = N_y = 200
     x_min, x_max, y_min, y_max = limits
     x_values = np.linspace(x_min, x_max, N_x)
     y_values = np.linspace(y_min, y_max, N_y)
 
     start_coefficient = time.time()
-    vD_e, vD_m = calculate_coefficients(k, eps_compl, r, conducting_center)
+    N, vD_e, vD_m = calculate_coefficients(k, eps_compl, r, conducting_center)
     end_coefficients = time.time()
 
     X, Y = np.meshgrid(x_values, y_values, indexing='ij')
