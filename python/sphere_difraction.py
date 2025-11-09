@@ -21,14 +21,14 @@ def psi_derivative(n: int, z: complex) -> complex: # derivative of x * j_n(x)
     return z * sp.spherical_jn(n, z, derivative=True) + sp.spherical_jn(n, z)
 
 def assoc_legendre_derivative(n: int, m: int, x: float) -> float:
-    if np.isclose(x,1.0):
+    if np.isclose(x, 1.0):
         x -= 1e-10
 
-    return (n * x * sp.lpmv(m, n, x) - (n + m) * sp.lpmv(m, n - 1, x)) / (x ** 2 - 1)
+    return (n * x * sp.lpmv(m, n, x) - (n + m) * sp.lpmv(m, n - 1, x)) / (x ** 2 - 1.0)
 
 def assoc_legendre_derivative_vectorized(n: int, m: int, x: np.ndarray) -> np.ndarray:
     x = np.where(np.isclose(x, 1.0), x - 1e-10, x)
-    return (n * x * sp.lpmv(m, n, x) - (n + m) * sp.lpmv(m, n - 1, x)) / (x ** 2 - 1)
+    return (n * x * sp.lpmv(m, n, x) - (n + m) * sp.lpmv(m, n - 1, x)) / (x ** 2 - 1.0)
 
 def calculate_coefficients(k: float, eps: list[complex], r: list[float], conducting_core: bool = True) -> tuple[list[complex], list[complex]]:
     
@@ -62,6 +62,8 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
 
         return R_m, R_e
     
+    assert len(r) + 1 <= len(eps) , "number of permittivities has to be at least 1 more then number of radiuses "
+
     layers_number = len(r)
     D_e = np.zeros(N_max, dtype=np.complex128)
     D_m = np.zeros(N_max, dtype=np.complex128)
@@ -113,8 +115,8 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
         D_e[n] = c_n * (T_e[n][1, 0] + T_e[n][1, 1] * R_e[n]) / (T_e[n][0, 0] + T_e[n][0, 1] * R_e[n])
         D_m[n] = c_n * (T_m[n][1, 0] + T_m[n][1, 1] * R_m[n]) / (T_m[n][0, 0] + T_m[n][0, 1] * R_m[n])
 
-        if(np.abs(D_e[n]) < 1e-40 and np.abs(D_m[n]) < 1e-40): # stop when values below threshold
-            break
+        #if(np.abs(D_e[n]) < 1e-40 and np.abs(D_m[n]) < 1e-40): # stop when values below threshold
+        #    break
     
     return D_e, D_m
 
@@ -122,18 +124,20 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
 def calculate_S(D_e, D_m):
 
     N = D_e.shape[0]
-    M = 1000
+    M = 3600
     S_th = np.zeros(M, dtype=np.complex128)
     S_ph = np.zeros(M, dtype=np.complex128)
 
     i_pow = (-1j) ** np.arange(1, N) # Vector of (-1j)**n
     for m in range(M):
-        theta = 0.0001 + m / M * 2 * np.pi
+        theta = m / M * 2 * np.pi
 
         cos_th = np.cos(theta)
         sin_th = np.sin(theta)
 
-        first_terms = sp.lpmv(1, np.arange(N), cos_th) / sin_th
+        first_terms = sp.lpmv(1, np.arange(N), cos_th)
+        if (not np.isclose(sin_th, 0.0)):
+            first_terms /= sin_th
         second_terms = assoc_legendre_derivative(np.arange(N), 1, cos_th) * sin_th
 
         # Replace invalid entries
