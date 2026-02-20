@@ -1,37 +1,23 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def plot_field_scaterring(S_th, S_ph):
+def plot_field_scaterring(S_th, S_ph = None):
     num_points = len(S_th)
-    y_values = [abs(c) for c in S_ph[:num_points // 2]] + [abs(c) for c in S_th[num_points // 2:]]
+
+    if S_ph is None:
+        y_values = [abs(c) for c in S_th]
+    else:
+        y_values = [abs(c) for c in S_ph[:num_points // 2]] + [abs(c) for c in S_th[num_points // 2:]]
+        
     y_values = np.array(y_values)
 
     theta = np.linspace(0, 2 * np.pi, num_points)
 
-    plt.figure(figsize=(8, 8), dpi=200)
+    plt.figure(figsize=(6, 6), dpi=200)
 
-    number = 75
     ax = plt.subplot(111, projection='polar')
     ax.plot(theta, y_values, linestyle='-', linewidth=0.5)
-    #ax.set_yticklabels([])
-
-    ax.set_title('Диаграмма рассеяния')
-
-    plt.show()
-
-def plot_field_scaterring(S):
-    num_points = len(S)
-    y_values = [abs(c) for c in S]
-    y_values = np.array(y_values)
-
-    theta = np.linspace(0, 2 * np.pi, num_points)
-
-    plt.figure(figsize=(8, 8), dpi=200)
-
-    number = 75
-    ax = plt.subplot(111, projection='polar')
-    ax.plot(theta, y_values, linestyle='-', linewidth=0.5)
-    #ax.set_yticklabels([])
+    ax.set_yticklabels([])
 
     ax.set_title('Диаграмма рассеяния')
 
@@ -63,6 +49,8 @@ def plot_field_distribution(E, limits, r, eps, lmbd, conducting_center = True):
     plt.show()
 
 def plot_radar_cross_section(S, k, y_params = [-30, 30, 10], save_path = ""):
+    plt.rcParams.update({'font.size': 14})
+
     y_values = np.array([abs(c)**2 for c in S][:]) * 4.0 * np.pi * k**2
     num_points = len(y_values) //2
 
@@ -91,7 +79,7 @@ def plot_radar_cross_section(S, k, y_params = [-30, 30, 10], save_path = ""):
     else:
         plt.savefig(save_path)
 
-def plot_radar_cross_section(S_theta, S_phi, k, y_params = [-30, 30, 10], save_path = ""):
+def plot_radar_cross_sections(S_theta, S_phi, k, y_params = [-30, 30, 10], save_path = ""):
     plt.rcParams.update({'font.size': 14})
 
     Y1_values = np.array([abs(c)**2 for c in S_theta][:]) * 4.0 * np.pi * k**2

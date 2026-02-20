@@ -21,10 +21,10 @@ def psi_derivative(n: int, z: complex) -> complex: # derivative of x * j_n(x)
     return z * sp.spherical_jn(n, z, derivative=True) + sp.spherical_jn(n, z)
 
 def assoc_legendre_derivative(n: int, m: int, x: float) -> float:
-    if np.isclose(x, 1.0):
-        x -= 1e-10
 
-    return (n * x * sp.lpmv(m, n, x) - (n + m) * sp.lpmv(m, n - 1, x)) / (x ** 2 - 1.0)
+    result = sp.assoc_legendre_p(n, m, x , diff_n = 1)[1,:]
+    result = np.where(result[:] == np.inf, 0, result[:])
+    return result
 
 def assoc_legendre_derivative_vectorized(n: int, m: int, x: np.ndarray) -> np.ndarray:
     x = np.where(np.isclose(x, 1.0), x - 1e-10, x)
@@ -101,8 +101,8 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
         B_e[:, 0, :] *= eps[i + 1]  # B_e is B_m with first row multiplied by eps[i + 1]
 
         for n in range(1, N_max):
-            T_m[n] @= np.linalg.inv(B_m[n]) @ A_m[n]
-            T_e[n] @= np.linalg.inv(B_e[n]) @ A_e[n]
+            T_m[n] = (np.linalg.inv(B_m[n]) @ A_m[n]) @ T_m[n]
+            T_e[n] = (np.linalg.inv(B_e[n]) @ A_e[n]) @ T_e[n]
     
     if(conducting_core):
         R_m, R_e = calculate_R_for_conducting_center(k, eps, r)
@@ -115,22 +115,19 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
         D_e[n] = c_n * (T_e[n][1, 0] + T_e[n][1, 1] * R_e[n]) / (T_e[n][0, 0] + T_e[n][0, 1] * R_e[n])
         D_m[n] = c_n * (T_m[n][1, 0] + T_m[n][1, 1] * R_m[n]) / (T_m[n][0, 0] + T_m[n][0, 1] * R_m[n])
 
-        #if(np.abs(D_e[n]) < 1e-40 and np.abs(D_m[n]) < 1e-40): # stop when values below threshold
-        #    break
-    
     return D_e, D_m
 
+def calculate_S(D_e, D_m, M = 3600):
 
-def calculate_S(D_e, D_m):
-
+    M = M // 2
     N = D_e.shape[0]
-    M = 3600
     S_th = np.zeros(M, dtype=np.complex128)
     S_ph = np.zeros(M, dtype=np.complex128)
 
     i_pow = (-1j) ** np.arange(1, N) # Vector of (-1j)**n
     for m in range(M):
-        theta = m / M * 2 * np.pi
+        theta = m / M * np.pi
+        assert(theta < 2 * np.pi)
 
         cos_th = np.cos(theta)
         sin_th = np.sin(theta)
@@ -139,13 +136,17 @@ def calculate_S(D_e, D_m):
         if (not np.isclose(sin_th, 0.0)):
             first_terms /= sin_th
         second_terms = assoc_legendre_derivative(np.arange(N), 1, cos_th) * sin_th
-
+        
         # Replace invalid entries
         first_terms = np.where(np.isfinite(first_terms), first_terms, 0.0)
         second_terms = np.where(np.isfinite(second_terms), second_terms, 0.0)
 
         S_th[m] += np.sum(i_pow * (D_m[1:N] * first_terms[1:N] - D_e[1:N] * second_terms[1:N]))
         S_ph[m] += np.sum(i_pow * (D_m[1:N] * second_terms[1:N] - D_e[1:N] * first_terms[1:N]))
+
+    # arrays are symmetrical over theta, so we mirror their contents
+    S_th = np.concatenate([S_th, S_th[::-1]])
+    S_ph = np.concatenate([S_ph, S_ph[::-1]])
 
     return S_th, S_ph
 
