@@ -7,6 +7,7 @@ import time
 
 N_max = 100  # Global variable, defining summation limit
 iHO = 1  # order of Hankel function
+THRESHOLD = 1e-50 
 
 def xi(n: int, z: complex) -> complex: # x * h1_n(x)
     return z * ( sp.spherical_jn(n, z) + 1j * sp.spherical_yn(n, z))
@@ -115,19 +116,35 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
         D_e[n] = c_n * (T_e[n][1, 0] + T_e[n][1, 1] * R_e[n]) / (T_e[n][0, 0] + T_e[n][0, 1] * R_e[n])
         D_m[n] = c_n * (T_m[n][1, 0] + T_m[n][1, 1] * R_m[n]) / (T_m[n][0, 0] + T_m[n][0, 1] * R_m[n])
 
+        # if absolute value of D becomes very small -> stop loop
+        if  np.abs(D_e[n]) < THRESHOLD or \
+            np.abs(D_m[n]) < THRESHOLD :
+            break
+
     return D_e, D_m
 
-def calculate_S(D_e, D_m, M = 3600):
+def calculate_S(k: float, eps: list[complex], r: list[float], conducting_core: bool = True, M = 3600):
 
-    M = M // 2
+    assert M > 0, "M has to be positive integer"
+
+    D_e, D_m = calculate_coefficients(k, eps, r, conducting_core)
     N = D_e.shape[0]
-    S_th = np.zeros(M, dtype=np.complex128)
-    S_ph = np.zeros(M, dtype=np.complex128)
 
+    S_size = (M + 1) // 2 + (M % 2 == 0)
+    anglesNumber = (M + 1) // 2
+    S_th = np.zeros(S_size, dtype=np.complex128)
+    S_ph = np.zeros(S_size, dtype=np.complex128)
     i_pow = (-1j) ** np.arange(1, N) # Vector of (-1j)**n
-    for m in range(M):
-        theta = m / M * np.pi
-        assert(theta < 2 * np.pi)
+    n_pow = np.arange(1, N) * (np.arange(1, N) + 1) / 2 # Vector of n*(n+1)/2 for n =[1..N]
+
+    # formula in loop doesn't realy work for angle = 0, so we take asymptotic formula
+    S_th[0] += np.sum(i_pow * n_pow * (-D_m[1:N] - D_e[1:N]))
+    S_ph[0] += np.sum(i_pow * n_pow * ( D_m[1:N] + D_e[1:N]))
+
+    theta_step = 2 * np.pi / M
+    for m in range(1, anglesNumber):
+        theta = m * theta_step
+        assert theta < 2 * np.pi
 
         cos_th = np.cos(theta)
         sin_th = np.sin(theta)
@@ -144,9 +161,19 @@ def calculate_S(D_e, D_m, M = 3600):
         S_th[m] += np.sum(i_pow * (D_m[1:N] * first_terms[1:N] - D_e[1:N] * second_terms[1:N]))
         S_ph[m] += np.sum(i_pow * (D_m[1:N] * second_terms[1:N] - D_e[1:N] * first_terms[1:N]))
 
+    if M%2 == 0: # we need to calculate value at anlge = pi, asymtotic formula aswell
+        S_th[S_size - 1] += np.sum(i_pow * ((-1) ** np.arange(1,N)) * n_pow * (D_m[1:N] - D_e[1:N]))
+        S_ph[S_size - 1] += np.sum(i_pow * ((-1) ** np.arange(1,N)) * n_pow * (D_m[1:N] - D_e[1:N]))
+
     # arrays are symmetrical over theta, so we mirror their contents
-    S_th = np.concatenate([S_th, S_th[::-1]])
-    S_ph = np.concatenate([S_ph, S_ph[::-1]])
+    if M%2 == 0:
+        # if M is even then we have values at angles 0 and pi, we shouldn't duplicate them 
+        S_th = np.concatenate([S_th, S_th[::-1][1:-1]])
+        S_ph = np.concatenate([S_ph, S_ph[::-1][1:-1]])
+    else:
+        # if M is odd we shouldn't duplicate value at anlge = 0
+        S_th = np.concatenate([S_th, S_th[::-1][:-1]])
+        S_ph = np.concatenate([S_ph, S_ph[::-1][:-1]])
 
     return S_th, S_ph
 
