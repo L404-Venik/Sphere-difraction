@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.constants as const
+c = const.speed_of_light
 
 def plot_field_scaterring(S_th, S_ph = None):
     num_points = len(S_th)
@@ -67,11 +69,12 @@ def plot_radar_cross_section(S, k, y_params = [-30, 30, 10], save_path = ""):
     ax.set_yticks(y_ticks)
     ax.set_ylim(y_min, y_max)
 
-    ax.plot(theta, 10 * np.log10(y_values[:num_points][::-1]), linestyle='-')
+    RCS = 10 * np.log10(y_values[:num_points][::-1])
+    ax.plot(theta, RCS, linestyle='-')
 
     #ax.set_title('RCS')
     ax.set_xbound(0, Right_bound)
-    ax.set_ylabel('dBm', fontsize='x-large')
+    ax.set_ylabel('dBm^2', fontsize='x-large')
     ax.set_xlabel('Theta (deg)', fontsize='x-large')
 
     if(save_path == ""):
@@ -105,10 +108,62 @@ def plot_radar_cross_sections(S_theta, S_phi, k, y_params = [-30, 30, 10], save_
     #ax.set_title('RCS')
     ax.legend()
     ax.set_xbound(0, Right_bound)
-    ax.set_ylabel('dBm', fontsize='x-large')
+    ax.set_ylabel('dBm^2', fontsize='x-large')
     ax.set_xlabel('Theta (deg)', fontsize='x-large')
 
     if(save_path == ""):
         plt.show()
     else:
         plt.savefig(save_path)
+
+def plot_back_scattering(S, wave_lengts, scale = "linear", sphere_radius = None, save_path = None, info_text = None):
+    k = 2 * np.pi / wave_lengts
+    frequencies = c / wave_lengts / 1e9
+
+    plt.figure(figsize=(18, 6))
+    ax = plt.subplot(111)
+    ax.grid()
+
+    if S.ndim == 1:
+        y_values = np.abs(S)**2 * 4.0 * np.pi * k**2
+        #y_values = 10 * np.log10(y_values)
+        x = np.arange(len(y_values))
+        ax.plot(x, y_values, linestyle='-')
+
+    elif S.ndim == 2:
+        x = np.arange(S.shape[1])
+        for i in range(S.shape[0]):
+            y_values = np.abs(S[i])**2 * 4.0 * np.pi * k**2
+            ax.plot(x, y_values, linestyle='-')
+
+    # choose evenly spaced tick positions
+    n_ticks = 10
+    tick_pos = np.linspace(0, len(x)-1, n_ticks, dtype=int)
+    tick_labels = np.round(frequencies[tick_pos], 3)
+    
+    ax.set_xticks(tick_pos)
+    ax.set_xticklabels(tick_labels)
+    ax.set_xbound(0, x[-1])
+
+    
+    # y_min, y_max, step = -10, 30, 10
+    # y_ticks = np.arange(y_min, y_max + step, step=step)
+    # ax.set_yticks(y_ticks)
+    # ax.set_ylim(y_min, y_max)
+
+    # add line acording to sphere radius
+    if sphere_radius != None:
+        freq_target = c / sphere_radius / 1e9 
+        idx = np.argmin(np.abs(frequencies - freq_target))
+        ax.axvline(x=idx, linestyle='--', color='red', linewidth=2)
+
+    if info_text != None:
+        plt.text(0.02, 0.95, info_text, transform=plt.gca().transAxes,
+             fontsize=10, verticalalignment='center', bbox=dict(boxstyle="round,pad=0.5", facecolor="white", alpha=0.8))
+    
+    #ax.set_title(f'ЭПР')
+    ax.set_ylabel('RCS (m^2)', fontsize='x-large')
+    ax.set_yscale(scale)
+    ax.set_xlabel('Frequencies (GHz)', fontsize='x-large')
+
+    plt.show()

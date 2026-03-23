@@ -10,26 +10,35 @@ iHO = 1  # order of Hankel function
 THRESHOLD = 1e-50 
 
 def xi(n: int, z: complex) -> complex: # x * h1_n(x)
-    return z * ( sp.spherical_jn(n, z) + 1j * sp.spherical_yn(n, z))
+    result = z * (sp.spherical_jn(n, z) + 1j * sp.spherical_yn(n, z))
+    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+    return result
 
 def xi_derivative(n: int, z: complex) -> complex: # derivative of x * h1_n(x)
-    return z * (sp.spherical_jn(n, z, derivative=True) + 1j * sp.spherical_yn(n, z, derivative=True)) + ( sp.spherical_jn(n, z) + 1j * sp.spherical_yn(n, z))
+    result = z * (sp.spherical_jn(n, z, derivative=True) + 1j * sp.spherical_yn(n, z, derivative=True)) + ( sp.spherical_jn(n, z) + 1j * sp.spherical_yn(n, z))
+    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+    return result
 
 def psi(n: int, z:complex) -> complex: # x * j_n(x)
-    return z * sp.spherical_jn(n, z)
+    result = z * sp.spherical_jn(n, z)
+    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+    return result
 
 def psi_derivative(n: int, z: complex) -> complex: # derivative of x * j_n(x)
-    return z * sp.spherical_jn(n, z, derivative=True) + sp.spherical_jn(n, z)
+    result = z * sp.spherical_jn(n, z, derivative=True) + sp.spherical_jn(n, z)
+    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+    return result
 
 def assoc_legendre_derivative(n: int, m: int, x: float) -> float:
-
     result = sp.assoc_legendre_p(n, m, x , diff_n = 1)[1,:]
-    result = np.where(result[:] == np.inf, 0, result[:])
+    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
     return result
 
 def assoc_legendre_derivative_vectorized(n: int, m: int, x: np.ndarray) -> np.ndarray:
     x = np.where(np.isclose(x, 1.0), x - 1e-10, x)
-    return (n * x * sp.lpmv(m, n, x) - (n + m) * sp.lpmv(m, n - 1, x)) / (x ** 2 - 1.0)
+    result = (n * x * sp.lpmv(m, n, x) - (n + m) * sp.lpmv(m, n - 1, x)) / (x ** 2 - 1.0)
+    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+    return result
 
 def calculate_coefficients(k: float, eps: list[complex], r: list[float], conducting_core: bool = True) -> tuple[list[complex], list[complex]]:
     
@@ -55,11 +64,14 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
 
         Orders = np.arange(N_max)
         
-        R_m = (np.sqrt(eps[1]) * psi_derivative(Orders, arg_R1) * psi(Orders, arg_R0) - np.sqrt(eps[0]) * psi(Orders, arg_R1) * psi_derivative(Orders, arg_R0)) / \
-                    (np.sqrt(eps[0]) * xi(Orders, arg_R1) * psi_derivative(Orders, arg_R0) - np.sqrt(eps[1]) * xi_derivative(Orders, arg_R1) * psi(Orders, arg_R0))
+        numerator = np.sqrt(eps[1]) * psi_derivative(Orders, arg_R1) * psi(Orders, arg_R0) - np.sqrt(eps[0]) * psi(Orders, arg_R1) * psi_derivative(Orders, arg_R0)
+        denominator = np.sqrt(eps[0]) * xi(Orders, arg_R1) * psi_derivative(Orders, arg_R0) - np.sqrt(eps[1]) * xi_derivative(Orders, arg_R1) * psi(Orders, arg_R0)
+        R_m =  np.divide(numerator, denominator, where=denominator != 0)
         
-        R_e = (np.sqrt(eps[0]) * psi_derivative(Orders, arg_R1) * psi(Orders, arg_R0) - np.sqrt(eps[1]) * psi(Orders, arg_R1) * psi_derivative(Orders, arg_R0)) / \
-                    (np.sqrt(eps[1]) * xi(Orders, arg_R1) * psi_derivative(Orders, arg_R0) - np.sqrt(eps[0]) * xi_derivative(Orders, arg_R1) * psi(Orders, arg_R0))
+        
+        numerator = np.sqrt(eps[0]) * psi_derivative(Orders, arg_R1) * psi(Orders, arg_R0) - np.sqrt(eps[1]) * psi(Orders, arg_R1) * psi_derivative(Orders, arg_R0)
+        denominator = np.sqrt(eps[1]) * xi(Orders, arg_R1) * psi_derivative(Orders, arg_R0) - np.sqrt(eps[0]) * xi_derivative(Orders, arg_R1) * psi(Orders, arg_R0)
+        R_e = np.divide(numerator, denominator, where=denominator != 0)
 
         return R_m, R_e
     
@@ -121,14 +133,14 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
             np.abs(D_m[n]) < THRESHOLD :
             break
 
-    return D_e, D_m
+    return D_e, D_m, n
 
 def calculate_S(k: float, eps: list[complex], r: list[float], conducting_core: bool = True, M = 3600):
 
     assert M > 0, "M has to be positive integer"
 
-    D_e, D_m = calculate_coefficients(k, eps, r, conducting_core)
-    N = D_e.shape[0]
+    D_e, D_m, N = calculate_coefficients(k, eps, r, conducting_core)
+    #N = D_e.shape[0]
 
     S_size = (M + 1) // 2 + (M % 2 == 0)
     anglesNumber = (M + 1) // 2
