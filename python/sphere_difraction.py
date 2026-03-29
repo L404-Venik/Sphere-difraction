@@ -1,11 +1,12 @@
 import numpy as np
 from numpy.linalg import solve
 import scipy.special as sp
+import Parameters as Param
 import hashlib
 import os
 import time
 
-N_max = 100  # Global variable, defining summation limit
+N_max = 128  # Global variable, defining summation limit
 iHO = 1  # order of Hankel function
 THRESHOLD = 1e-50 
 
@@ -40,7 +41,7 @@ def assoc_legendre_derivative_vectorized(n: int, m: int, x: np.ndarray) -> np.nd
     result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
     return result
 
-def calculate_coefficients(k: float, eps: list[complex], r: list[float], conducting_core: bool = True) -> tuple[list[complex], list[complex]]:
+def calculate_coefficients(ExperimentParam: Param.ExperimentParameters) -> tuple[list[complex], list[complex], int]:
     
     def calculate_R_for_conducting_center(k, eps, r):
         
@@ -75,6 +76,11 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
 
         return R_m, R_e
     
+    k = ExperimentParam.k
+    eps = ExperimentParam.eps
+    r = ExperimentParam.r
+    conducting_core = ExperimentParam.conducting_core
+
     assert len(r) + 1 <= len(eps) , "number of permittivities has to be at least 1 more then number of radiuses "
 
     layers_number = len(r)
@@ -135,11 +141,11 @@ def calculate_coefficients(k: float, eps: list[complex], r: list[float], conduct
 
     return D_e, D_m, n
 
-def calculate_S(k: float, eps: list[complex], r: list[float], conducting_core: bool = True, M = 3600):
+def calculate_S(ExperimentParam: Param.ExperimentParameters, M = 3600):
 
-    assert M > 0, "M has to be positive integer"
+    assert M > 0, 'M has to be positive integer'
 
-    D_e, D_m, N = calculate_coefficients(k, eps, r, conducting_core)
+    D_e, D_m, N = calculate_coefficients(ExperimentParam)
     #N = D_e.shape[0]
 
     S_size = (M + 1) // 2 + (M % 2 == 0)
@@ -190,29 +196,24 @@ def calculate_S(k: float, eps: list[complex], r: list[float], conducting_core: b
     return S_th, S_ph
 
 
-def calculate_electric_field_far(r: list[float], eps_compl: list[complex], lambda_: float, conducting_core: bool = True) -> tuple[list[complex], list[complex]]:
-    k = 2 * np.pi / lambda_
+def calculate_electric_field_far(ExperimentParam: Param.ExperimentParameters, phi = np.pi * 0) -> tuple[list[complex], list[complex]]:
+    k = ExperimentParam.k
     
-    D_e, D_m = calculate_coefficients(k, eps_compl, r, conducting_core)
-    S_th, S_ph = calculate_S(D_e, D_m)
+    S_th, S_ph = calculate_S(ExperimentParam)
     
-    x = r[-1] * 10
-    phi = 0
+    x = ExperimentParam.r[-1] * 10
     cos_phi = np.cos(phi)
     sin_phi = np.sin(phi)
 
     E_theta = S_th * k**2 * (np.exp(1j * k * x) * cos_phi / (k * x))
     E_phi =   S_ph * k**2 * (np.exp(1j * k * x) * sin_phi / (k * x))
     
-    E_theta[0] = E_theta[-1]
-    E_phi[0] = E_phi[-1]
-    
     return E_theta, E_phi
 
 
 # deprecated, better use the next one
-def calculate_electric_field_close(r: list[float], eps_compl: list[complex], lambda_: float, limits:list[float]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
-    k = 2 * np.pi / lambda_
+def calculate_electric_field_close(ExperimentParam: Param.ExperimentParameters, limits:list[float]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
+    k = ExperimentParam.k
     phi = 0
 
     N_x = N_y = 300
@@ -224,15 +225,14 @@ def calculate_electric_field_close(r: list[float], eps_compl: list[complex], lam
     vE_phi = np.zeros((N_x,N_y),dtype=np.complex128)
     vE_r = np.zeros((N_x,N_y),dtype=np.complex128)
     
-    vD_e, vD_m = calculate_coefficients(k, eps_compl, r)
-    N = vD_e.shape[0]
+    vD_e, vD_m, N = calculate_coefficients(ExperimentParam)
 
     cos_phi = np.cos(phi)
 
     for i, x in enumerate(x_values):
         for j, y in enumerate(y_values):
             R = np.sqrt(x**2 + y**2)
-            if R < r[-1] or x == 0:
+            if R < ExperimentParam.r[-1] or x == 0:
                 continue
 
             theta = np.arctan2(y, x)
@@ -262,7 +262,7 @@ def calculate_electric_field_close(r: list[float], eps_compl: list[complex], lam
     return vE_r, vE_theta, vE_phi
 
 
-def calculate_electric_field_close_vectorized(r: list[float], eps_compl: list[complex], lambda_: float, limits:list[float], conducting_core: bool = True)-> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
+def calculate_electric_field_close_vectorized(ExperimentParam: Param.ExperimentParameters, coordinates_limits:list[float])-> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
         
     def load_or_compute_field_terms(cos_th: np.ndarray, kR: np.ndarray, N: int):
 
@@ -304,25 +304,24 @@ def calculate_electric_field_close_vectorized(r: list[float], eps_compl: list[co
         return Pnm, dPnm, hankel, hankel_deriv
 
     start = time.time()
-    k = 2 * np.pi / lambda_
+    k = ExperimentParam.k
     phi = 0
 
     cos_phi = np.cos(phi)
 
     N_x = N_y = 200
-    x_min, x_max, y_min, y_max = limits
+    x_min, x_max, y_min, y_max = coordinates_limits
     x_values = np.linspace(x_min, x_max, N_x)
     y_values = np.linspace(y_min, y_max, N_y)
 
     start_coefficient = time.time()
-    vD_e, vD_m = calculate_coefficients(k, eps_compl, r, conducting_core)
-    N = vD_e.shape[0]
+    vD_e, vD_m, N = calculate_coefficients(ExperimentParam)
     end_coefficients = time.time()
 
     X, Y = np.meshgrid(x_values, y_values, indexing='ij')
     R = np.sqrt(X**2 + Y**2)
     theta = np.arctan2(Y, X)
-    mask = (R >= r[-1]) & (X != 0)
+    mask = (R >= ExperimentParam.r[-1]) & (X != 0)
 
     E_r = np.zeros_like(R, dtype=np.complex128)
     E_theta = np.zeros_like(R, dtype=np.complex128)
