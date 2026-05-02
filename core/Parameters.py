@@ -38,6 +38,8 @@ class ExperimentParameters:
             raise ValueError("eps must be a 1D sequence of permittivities (can be complex).")
         if len(self.eps) < len(self.r) + 1:
             raise ValueError("len(eps) must be at least len(r) + 1 (one permittivity per layer plus exterior).")
+        if len(self.r) == 0 or self.r[0] <= 0:
+            raise ValueError("r[0] must be positive.")
         if np.any(self.r < 0):
             raise ValueError("All radii must be non-negative.")
         if np.any(np.diff(self.r) < 0):

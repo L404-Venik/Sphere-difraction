@@ -1,14 +1,9 @@
 import numpy as np
-from numpy.linalg import solve
 import scipy.special as sp
-import Parameters as Param
+from .Parameters import ExperimentParameters
 import hashlib
 import os
 import time
-
-N_max = 128  # Global variable, defining summation limit
-iHO = 1  # order of Hankel function
-THRESHOLD = 1e-50 
 
 def xi(n: int, z: complex) -> complex: # x * h1_n(x)
     result = z * (sp.spherical_jn(n, z) + 1j * sp.spherical_yn(n, z))
@@ -41,56 +36,62 @@ def assoc_legendre_derivative_vectorized(n: int, m: int, x: np.ndarray) -> np.nd
     result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
     return result
 
-def calculate_coefficients(ExperimentParam: Param.ExperimentParameters) -> tuple[list[complex], list[complex], int]:
-    
-    def calculate_R_for_conducting_center(k, eps, r):
+
+
+def _calculate_R_for_conducting_center(k, eps, r, n_max = 128):
         
-        arg_R = k * np.sqrt(eps[1]) * r[0]
-        Orders = np.arange(N_max)
+    arg_R = k * np.sqrt(eps[1]) * r[0]
+    Orders = np.arange(n_max)
 
-        R_m = - psi(Orders, arg_R) / xi(Orders, arg_R)
-        R_e = - psi_derivative(Orders, arg_R) / xi_derivative(Orders, arg_R)
+    R_m = - psi(Orders, arg_R) / xi(Orders, arg_R)
+    R_e = - psi_derivative(Orders, arg_R) / xi_derivative(Orders, arg_R)
 
+    return R_m, R_e
+    
+def _calculate_R_for_dielectric_center(k, eps, r, n_max = 128):
+
+    R_m = np.zeros(n_max, dtype=np.complex128)
+    R_e = np.zeros(n_max, dtype=np.complex128)
+    arg_R1 = k * np.sqrt(eps[1]) * r[0]
+    arg_R0 = k * np.sqrt(eps[0]) * r[0]
+
+    if(abs(arg_R1 - arg_R0) < 1e-14):
         return R_m, R_e
+
+    Orders = np.arange(n_max)
     
-    def calculate_R_for_dielectric_center(k, eps, r):
-        
-        R_m = np.zeros(N_max, dtype=np.complex128)
-        R_e = np.zeros(N_max, dtype=np.complex128)
-        arg_R1 = k * np.sqrt(eps[1]) * r[0]
-        arg_R0 = k * np.sqrt(eps[0]) * r[0]
-
-        if(abs(arg_R1 - arg_R0) < 1e-14):
-            return R_m, R_e
-
-        Orders = np.arange(N_max)
-        
-        numerator = np.sqrt(eps[1]) * psi_derivative(Orders, arg_R1) * psi(Orders, arg_R0) - np.sqrt(eps[0]) * psi(Orders, arg_R1) * psi_derivative(Orders, arg_R0)
-        denominator = np.sqrt(eps[0]) * xi(Orders, arg_R1) * psi_derivative(Orders, arg_R0) - np.sqrt(eps[1]) * xi_derivative(Orders, arg_R1) * psi(Orders, arg_R0)
-        R_m =  np.divide(numerator, denominator, where=denominator != 0)
-        
-        
-        numerator = np.sqrt(eps[0]) * psi_derivative(Orders, arg_R1) * psi(Orders, arg_R0) - np.sqrt(eps[1]) * psi(Orders, arg_R1) * psi_derivative(Orders, arg_R0)
-        denominator = np.sqrt(eps[1]) * xi(Orders, arg_R1) * psi_derivative(Orders, arg_R0) - np.sqrt(eps[0]) * xi_derivative(Orders, arg_R1) * psi(Orders, arg_R0)
-        R_e = np.divide(numerator, denominator, where=denominator != 0)
-
-        return R_m, R_e
+    numerator = np.sqrt(eps[1]) * psi_derivative(Orders, arg_R1) * psi(Orders, arg_R0) - np.sqrt(eps[0]) * psi(Orders, arg_R1) * psi_derivative(Orders, arg_R0)
+    denominator = np.sqrt(eps[0]) * xi(Orders, arg_R1) * psi_derivative(Orders, arg_R0) - np.sqrt(eps[1]) * xi_derivative(Orders, arg_R1) * psi(Orders, arg_R0)
+    R_m =  np.divide(numerator, denominator, where=denominator != 0)
     
-    k = ExperimentParam.k
-    eps = ExperimentParam.eps
-    r = ExperimentParam.r
-    conducting_core = ExperimentParam.conducting_core
+    
+    numerator = np.sqrt(eps[0]) * psi_derivative(Orders, arg_R1) * psi(Orders, arg_R0) - np.sqrt(eps[1]) * psi(Orders, arg_R1) * psi_derivative(Orders, arg_R0)
+    denominator = np.sqrt(eps[1]) * xi(Orders, arg_R1) * psi_derivative(Orders, arg_R0) - np.sqrt(eps[0]) * xi_derivative(Orders, arg_R1) * psi(Orders, arg_R0)
+    R_e = np.divide(numerator, denominator, where=denominator != 0)
 
-    assert len(r) + 1 <= len(eps) , "number of permittivities has to be at least 1 more then number of radiuses "
+    return R_m, R_e
+    
+
+
+def calculate_coefficients(
+        params: ExperimentParameters,
+        n_max: int = 128,
+        threshold: float = 1e-50,
+    ) -> tuple[np.ndarray, np.ndarray, int]:
+    
+    k = params.k
+    eps = params.eps
+    r = params.r
+    conducting_core = params.conducting_core
 
     layers_number = len(r)
-    D_e = np.zeros(N_max, dtype=np.complex128)
-    D_m = np.zeros(N_max, dtype=np.complex128)
-    
-    T_e = [np.eye(2, dtype=np.complex128) for _ in range(N_max)]
-    T_m = [np.eye(2, dtype=np.complex128) for _ in range(N_max)]
-    
-    Orders = np.arange(N_max)
+    D_e = np.zeros(n_max, dtype=np.complex128)
+    D_m = np.zeros(n_max, dtype=np.complex128)
+
+    T_e = [np.eye(2, dtype=np.complex128) for _ in range(n_max)]
+    T_m = [np.eye(2, dtype=np.complex128) for _ in range(n_max)]
+
+    Orders = np.arange(n_max)
     for i in range(1, layers_number):
 
         if(abs(eps[i] - eps[i + 1]) < 1e-14):
@@ -119,34 +120,35 @@ def calculate_coefficients(ExperimentParam: Param.ExperimentParameters) -> tuple
         B_e = B_m.copy()    
         B_e[:, 0, :] *= eps[i + 1]  # B_e is B_m with first row multiplied by eps[i + 1]
 
-        for n in range(1, N_max):
+        for n in range(1, n_max):
             T_m[n] = (np.linalg.inv(B_m[n]) @ A_m[n]) @ T_m[n]
             T_e[n] = (np.linalg.inv(B_e[n]) @ A_e[n]) @ T_e[n]
     
     if(conducting_core):
-        R_m, R_e = calculate_R_for_conducting_center(k, eps, r)
+        R_m, R_e = _calculate_R_for_conducting_center(k, eps, r, n_max)
     else:
-        R_m, R_e = calculate_R_for_dielectric_center(k, eps, r)
+        R_m, R_e = _calculate_R_for_dielectric_center(k, eps, r, n_max)
 
-    for n in range(1, N_max):
+    converged_at = n_max - 1
+    for n in range(1, n_max):
         c_n = (1j ** (n - 1)) / (k ** 2) * (2 * n + 1) / (n * (n + 1))
         
         D_e[n] = c_n * (T_e[n][1, 0] + T_e[n][1, 1] * R_e[n]) / (T_e[n][0, 0] + T_e[n][0, 1] * R_e[n])
         D_m[n] = c_n * (T_m[n][1, 0] + T_m[n][1, 1] * R_m[n]) / (T_m[n][0, 0] + T_m[n][0, 1] * R_m[n])
 
         # if absolute value of D becomes very small -> stop loop
-        if  np.abs(D_e[n]) < THRESHOLD or \
-            np.abs(D_m[n]) < THRESHOLD :
+        if  np.abs(D_e[n]) < threshold or \
+            np.abs(D_m[n]) < threshold :
+            converged_at = n
             break
 
-    return D_e, D_m, n
+    return D_e, D_m, converged_at
 
-def calculate_S(ExperimentParam: Param.ExperimentParameters, M = 3600):
+def calculate_S(ExperimentParam: ExperimentParameters, M = 3600):
 
     assert M > 0, 'M has to be positive integer'
 
     D_e, D_m, N = calculate_coefficients(ExperimentParam)
-    #N = D_e.shape[0]
 
     S_size = (M + 1) // 2 + (M % 2 == 0)
     anglesNumber = (M + 1) // 2
@@ -196,7 +198,7 @@ def calculate_S(ExperimentParam: Param.ExperimentParameters, M = 3600):
     return S_th, S_ph
 
 
-def calculate_electric_field_far(ExperimentParam: Param.ExperimentParameters, phi = np.pi * 0) -> tuple[list[complex], list[complex]]:
+def calculate_electric_field_far(ExperimentParam: ExperimentParameters, phi = np.pi * 0) -> tuple[list[complex], list[complex]]:
     k = ExperimentParam.k
     
     S_th, S_ph = calculate_S(ExperimentParam)
@@ -212,7 +214,7 @@ def calculate_electric_field_far(ExperimentParam: Param.ExperimentParameters, ph
 
 
 # deprecated, better use the next one
-def calculate_electric_field_close(ExperimentParam: Param.ExperimentParameters, limits:list[float]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
+def calculate_electric_field_close(ExperimentParam: ExperimentParameters, limits:list[float]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
     k = ExperimentParam.k
     phi = 0
 
@@ -262,7 +264,7 @@ def calculate_electric_field_close(ExperimentParam: Param.ExperimentParameters, 
     return vE_r, vE_theta, vE_phi
 
 
-def calculate_electric_field_close_vectorized(ExperimentParam: Param.ExperimentParameters, coordinates_limits:list[float])-> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
+def calculate_electric_field_close_vectorized(ExperimentParam: ExperimentParameters, coordinates_limits:list[float])-> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
         
     def load_or_compute_field_terms(cos_th: np.ndarray, kR: np.ndarray, N: int):
 

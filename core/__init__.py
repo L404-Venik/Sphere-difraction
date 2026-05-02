@@ -1,2 +1,9 @@
-from .Parameters import Parameters, PlotingParameters
-from .sphere_difraction import calculate_S, calculate_electric_field_far
+from .Parameters import ExperimentParameters, PlotingParameters
+from .sphere_difraction import calculate_S, calculate_electric_field_far, calculate_coefficients
+
+__all__ = [
+	"ExperimentParameters",
+	"calculate_S",
+	"calculate_electric_field_far",
+	"calculate_coefficients",
+]
