@@ -26,7 +26,13 @@ def psi_derivative(n: int, z: complex) -> complex: # derivative of x * j_n(x)
     return result
 
 def assoc_legendre_derivative(n: int, m: int, x: float) -> float:
-    result = sp.assoc_legendre_p(n, m, x , diff_n = 1)[1,:]
+    # Use the same identity as in the vectorized variant.
+    # Accepts either scalar or array-like `n` and returns an array-like result.
+    # Protect the x value near +-1 to avoid division by zero.
+    x_safe = (x - 1e-10) if np.isclose(x, 1.0) else x
+    n_arr = np.asarray(n)
+    # lpmv can accept array `n` and returns values accordingly
+    result = (n_arr * x_safe * sp.lpmv(m, n_arr, x_safe) - (n_arr + m) * sp.lpmv(m, n_arr - 1, x_safe)) / (x_safe ** 2 - 1.0)
     result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
     return result
 
