@@ -144,28 +144,52 @@ def calculate_coefficients(
 
     return D_e, D_m, converged_at
 
-def calculate_S(ExperimentParam: ExperimentParameters, M = 3600):
+def calculate_S(params: ExperimentParameters, M = 3600):
+    """
+    Compute the far-field scattering amplitude functions S_theta and S_phi
+    for M evenly spaced angles over [0, 2pi].
 
+    Angles 0 and pi are handled separately via asymptotic formulas 
+    because the general term is singular there.
+
+    Parameters
+    ----------
+    params : ExperimentParameters
+        Sphere and wave parameters.
+    M : int
+        Number of angular samples. Must be positive.
+
+    Returns
+    -------
+    S_th, S_ph : ndarray of shape (M,), dtype complex128
+        Scattering amplitudes at angles m * 2pi/M for m in 0..M-1.
+    """
     assert M > 0, 'M has to be positive integer'
 
-    D_e, D_m, N = calculate_coefficients(ExperimentParam)
+    D_e, D_m, N = calculate_coefficients(params)
 
-    S_size = (M + 1) // 2 + (M % 2 == 0)
-    anglesNumber = (M + 1) // 2
-    S_th = np.zeros(S_size, dtype=np.complex128)
-    S_ph = np.zeros(S_size, dtype=np.complex128)
-    i_pow = (-1j) ** np.arange(1, N) # Vector of (-1j)**n
-    n_pow = np.arange(1, N) * (np.arange(1, N) + 1) / 2 # Vector of n*(n+1)/2 for n =[1..N]
+    n = np.arange(1, N)
+    i_pow  = (-1j) ** n               # (-i)^n
+    n_pair = n * (n + 1) / 2          # n(n+1)/2 
+    
+    # Number of unique angles to compute before mirroring.
+    # The series is symmetric: S(2pi - theta) = S(theta), so we only
+    # compute the first half and reflect.
+    n_unique = (M + 1) // 2
+    # If M is even, angle=pi lands exactly on a sample and needs special treatment.
+    has_pi   = (M % 2 == 0)
+    n_compute = n_unique + has_pi
 
-    # formula in loop doesn't realy work for angle = 0, so we take asymptotic formula
-    S_th[0] += np.sum(i_pow * n_pow * (-D_m[1:N] - D_e[1:N]))
-    S_ph[0] += np.sum(i_pow * n_pow * ( D_m[1:N] + D_e[1:N]))
+    S_th = np.zeros(n_compute, dtype=np.complex128)
+    S_ph = np.zeros(n_compute, dtype=np.complex128)
+
+    # --- theta = 0 (forward scattering): use asymptotic limit ---
+    S_th[0] = np.sum(i_pow * n_pair * (D_m[1:N] + D_e[1:N]))
+    S_ph[0] = -S_th[0]
 
     theta_step = 2 * np.pi / M
-    for m in range(1, anglesNumber):
+    for m in range(1, n_unique):
         theta = m * theta_step
-        assert theta < 2 * np.pi
-
         cos_th = np.cos(theta)
         sin_th = np.sin(theta)
 
@@ -181,19 +205,18 @@ def calculate_S(ExperimentParam: ExperimentParameters, M = 3600):
         S_th[m] += np.sum(i_pow * (D_m[1:N] * first_terms[1:N] - D_e[1:N] * second_terms[1:N]))
         S_ph[m] += np.sum(i_pow * (D_m[1:N] * second_terms[1:N] - D_e[1:N] * first_terms[1:N]))
 
-    if M%2 == 0: # we need to calculate value at anlge = pi, asymtotic formula aswell
-        S_th[S_size - 1] += np.sum(i_pow * ((-1) ** np.arange(1,N)) * n_pow * (D_m[1:N] - D_e[1:N]))
-        S_ph[S_size - 1] += np.sum(i_pow * ((-1) ** np.arange(1,N)) * n_pow * (D_m[1:N] - D_e[1:N]))
-
-    # arrays are symmetrical over theta, so we mirror their contents
-    if M%2 == 0:
-        # if M is even then we have values at angles 0 and pi, we shouldn't duplicate them 
-        S_th = np.concatenate([S_th, S_th[::-1][1:-1]])
-        S_ph = np.concatenate([S_ph, S_ph[::-1][1:-1]])
-    else:
-        # if M is odd we shouldn't duplicate value at anlge = 0
-        S_th = np.concatenate([S_th, S_th[::-1][:-1]])
-        S_ph = np.concatenate([S_ph, S_ph[::-1][:-1]])
+    # --- theta = pi (backscattering): use asymptotic limit ---
+    if has_pi:
+        alternating = (-1) ** n
+        S_th[-1] = np.sum(i_pow * alternating * n_pair * (D_e[1:N] - D_m[1:N]))
+        S_ph[-1] = S_th[-1]
+        
+    # --- Mirror over theta = pi to fill the second half ---
+    # Exclude endpoints (0 and pi) from the reflection to avoid duplication.
+    interior_th = S_th[1:-1] if has_pi else S_th[1:]
+    interior_ph = S_ph[1:-1] if has_pi else S_ph[1:]
+    S_th = np.concatenate([S_th, interior_th[::-1]])
+    S_ph = np.concatenate([S_ph, interior_ph[::-1]])
 
     return S_th, S_ph
 
