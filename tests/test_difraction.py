@@ -1,7 +1,7 @@
 # test_scattering.py
 import numpy as np
 import pytest
-from core.Parameters import ExperimentParameters
+from core.parameters import ExperimentParameters
 from core.sphere_difraction import calculate_S
 
 @pytest.fixture

@@ -1,6 +1,5 @@
-import sys
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QSplitter, QWidget,
+    QMainWindow, QSplitter, QWidget,
     QGridLayout, QFrame, QLabel, QVBoxLayout, QGroupBox, QFormLayout, QDoubleSpinBox
 )
 from PyQt6.QtCore import Qt
@@ -21,7 +20,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Sphere Diffraction")
-        self.resize(1200, 800)
+        self.resize(1600, 900)
         self._build_menu()
         self._build_splitter()
 
@@ -82,13 +81,3 @@ class MainWindow(QMainWindow):
         splitter.setSizes([400, 800])
 
         self.setCentralWidget(splitter)
-
-
-def main():
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
-
-if __name__ == "__main__":
-    main()

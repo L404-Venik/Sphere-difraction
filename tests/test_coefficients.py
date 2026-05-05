@@ -1,7 +1,7 @@
 # test_coefficients.py
 import numpy as np
 import pytest
-from core.Parameters import ExperimentParameters
+from core.parameters import ExperimentParameters
 from core.sphere_difraction import calculate_coefficients
 
 def make_params(eps_inner, eps_outer, r=0.1, wl=1.0, **kwargs):

@@ -2,7 +2,7 @@
 import numpy as np
 import re
 import pytest
-from core.Parameters import ExperimentParameters
+from core.parameters import ExperimentParameters
 import scipy.constants as const
 c = const.speed_of_light
 
