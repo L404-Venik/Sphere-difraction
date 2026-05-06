@@ -58,6 +58,7 @@ class ComputationManager(QObject):
     finished = pyqtSignal(ExperimentParameters, object, int)
     failed = pyqtSignal(str)
     compute_requested = pyqtSignal(object, int)
+    cancel_requested = pyqtSignal()
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -66,11 +67,11 @@ class ComputationManager(QObject):
         self._worker.moveToThread(self._thread)
 
         self.compute_requested.connect(self._worker.enqueue)
+        self.cancel_requested.connect(self._worker.cancel_pending)
         self._worker.started.connect(self.started)
         self._worker.finished.connect(self.finished)
         self._worker.failed.connect(self.failed)
 
-        self._thread.started.connect(lambda: None)
         self._thread.start()
 
     def request_compute(self, params: ExperimentParameters, M: int = 3600) -> None:
@@ -79,7 +80,7 @@ class ComputationManager(QObject):
         self.compute_requested.emit(params, int(M))
 
     def cancel_pending(self) -> None:
-        self._worker.cancel_pending()
+        self.cancel_requested.emit()
 
     def shutdown(self) -> None:
         if self._thread.isRunning():
