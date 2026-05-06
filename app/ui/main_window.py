@@ -17,8 +17,9 @@ class PlaceholderPlot(QFrame):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, controller=None):
         super().__init__()
+        self._controller = controller
         self.setWindowTitle("Sphere Diffraction")
         self.resize(1600, 900)
         self._build_menu()
@@ -64,6 +65,9 @@ class MainWindow(QMainWindow):
         wavelength_spin.setValue(0.5)
         wavelength_spin.setSuffix(" m")
         wave_form.addRow("Wavelength (λ):", wavelength_spin)
+
+        if self._controller is not None:
+            wavelength_spin.valueChanged.connect(lambda value: self._controller.set_wave_length(float(value)))
 
         left_layout.addWidget(wave_group)
 
