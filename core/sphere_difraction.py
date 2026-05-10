@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.special as sp
-from .Parameters import ExperimentParameters
+from .parameters import ExperimentParameters
 import hashlib
 import os
 import time
@@ -190,8 +190,8 @@ def calculate_S(params: ExperimentParameters, M = 3600):
     S_ph = np.zeros(n_compute, dtype=np.complex128)
 
     # --- theta = 0 (forward scattering): use asymptotic limit ---
-    S_th[0] = np.sum(i_pow * n_pair * (D_m[1:N] + D_e[1:N]))
-    S_ph[0] = -S_th[0]
+    S_ph[0] = np.sum(i_pow * n_pair * (D_m[1:N] + D_e[1:N]))
+    S_th[0] = -S_ph[0]
 
     theta_step = 2 * np.pi / M
     for m in range(1, n_unique):
