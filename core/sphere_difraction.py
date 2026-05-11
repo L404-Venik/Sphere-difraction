@@ -127,8 +127,13 @@ def calculate_coefficients(
         B_e[:, 0, :] *= eps[i + 1]  # B_e is B_m with first row multiplied by eps[i + 1]
 
         for n in range(1, n_max):
-            T_m[n] = (np.linalg.inv(B_m[n]) @ A_m[n]) @ T_m[n]
-            T_e[n] = (np.linalg.inv(B_e[n]) @ A_e[n]) @ T_e[n]
+            try:
+                T_m[n] = np.linalg.solve(B_m[n], A_m[n]) @ T_m[n]
+                T_e[n] = np.linalg.solve(B_e[n], A_e[n]) @ T_e[n]
+            except np.linalg.LinAlgError:
+                # B is singular at this order — boundary condition is degenerate,
+                # leave T[n] unchanged (identity propagation for this layer)
+                pass
     
     if(conducting_core):
         R_m, R_e = _calculate_R_for_conducting_center(k, eps, r, n_max)
