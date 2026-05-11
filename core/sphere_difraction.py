@@ -65,15 +65,18 @@ def _calculate_R_for_dielectric_center(k, eps, r, n_max = 128):
         return R_m, R_e
 
     Orders = np.arange(n_max)
+    psi_R0 = psi(Orders, arg_R0)
+    psi_R1 = psi(Orders, arg_R1)
+    dpsi_R0 = psi_derivative(Orders, arg_R0)
+    dpsi_R1 = psi_derivative(Orders, arg_R1)
     
-    numerator = np.sqrt(eps[1]) * psi_derivative(Orders, arg_R1) * psi(Orders, arg_R0) - np.sqrt(eps[0]) * psi(Orders, arg_R1) * psi_derivative(Orders, arg_R0)
-    denominator = np.sqrt(eps[0]) * xi(Orders, arg_R1) * psi_derivative(Orders, arg_R0) - np.sqrt(eps[1]) * xi_derivative(Orders, arg_R1) * psi(Orders, arg_R0)
-    R_m =  np.divide(numerator, denominator, where=denominator != 0)
+    numerator = np.sqrt(eps[1]) * dpsi_R1 * psi_R0 - np.sqrt(eps[0]) * psi_R1 * dpsi_R0
+    denominator = np.sqrt(eps[0]) * xi(Orders, arg_R1) * dpsi_R0 - np.sqrt(eps[1]) * xi_derivative(Orders, arg_R1) * psi_R0
+    R_m =  np.divide(numerator, denominator, where=denominator != 0, out=None)
     
-    
-    numerator = np.sqrt(eps[0]) * psi_derivative(Orders, arg_R1) * psi(Orders, arg_R0) - np.sqrt(eps[1]) * psi(Orders, arg_R1) * psi_derivative(Orders, arg_R0)
-    denominator = np.sqrt(eps[1]) * xi(Orders, arg_R1) * psi_derivative(Orders, arg_R0) - np.sqrt(eps[0]) * xi_derivative(Orders, arg_R1) * psi(Orders, arg_R0)
-    R_e = np.divide(numerator, denominator, where=denominator != 0)
+    numerator = np.sqrt(eps[0]) * dpsi_R1 * psi_R0 - np.sqrt(eps[1]) * psi_R1 * dpsi_R0
+    denominator = np.sqrt(eps[1]) * xi(Orders, arg_R1) * dpsi_R0 - np.sqrt(eps[0]) * xi_derivative(Orders, arg_R1) * psi_R0
+    R_e = np.divide(numerator, denominator, where=denominator != 0, out=None)
 
     return R_m, R_e
     
@@ -94,8 +97,8 @@ def calculate_coefficients(
     D_e = np.zeros(n_max, dtype=np.complex128)
     D_m = np.zeros(n_max, dtype=np.complex128)
 
-    T_e = [np.eye(2, dtype=np.complex128) for _ in range(n_max)]
-    T_m = [np.eye(2, dtype=np.complex128) for _ in range(n_max)]
+    T_e = np.broadcast_to(np.eye(2, dtype=np.complex128), (n_max, 2, 2)).copy()
+    T_m = np.broadcast_to(np.eye(2, dtype=np.complex128), (n_max, 2, 2)).copy()
 
     Orders = np.arange(n_max)
     for i in range(1, layers_number):
