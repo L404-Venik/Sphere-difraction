@@ -51,7 +51,7 @@ def plot_field_scaterring(S_th, S_ph = None, PlotParam = None, Polarization = No
         max_visible_values = y_values[mask].max()
 
         if PlotParam is not None:
-            ax.plot(theta, y_values, linestyle='-', linewidth=1.5, label=PlotParam.experiments.get_label())
+            ax.plot(theta, y_values, linestyle='-', linewidth=1.5, label=PlotParam.experiments.label)
         else:
             ax.plot(theta, y_values, linestyle='-', linewidth=1.5)
     elif S_th.ndim == 2:
@@ -67,7 +67,7 @@ def plot_field_scaterring(S_th, S_ph = None, PlotParam = None, Polarization = No
             max_visible_values = max(max_visible_values, y_values[mask].max())
             
             if PlotParam is not None:
-                ax.plot(theta, y_values, linestyle='-', linewidth=1.5, label=PlotParam.experiments[i].get_label())
+                ax.plot(theta, y_values, linestyle='-', linewidth=1.5, label=PlotParam.experiments[i].label)
             else:
                 ax.plot(theta, y_values, linestyle='-', linewidth=1.5)
     else:
@@ -174,7 +174,7 @@ def plot_radar_cross_section(S, k, y_params = [-30, 30, 10], save_path = None, i
     ax.set_ylabel('dBm^2', fontsize='x-large')
     ax.set_xlabel('Theta (deg)', fontsize='x-large')
     #ax.legend(title="диэлектр. прониц.")
-    ax.legend(title='толщина диэл.', loc = 'lower right')
+    #ax.legend(title='толщина диэл.', loc = 'lower right')
 
     if info_text is not None:
         plt.text(0.02, 0.95, info_text, transform=plt.gca().transAxes,
