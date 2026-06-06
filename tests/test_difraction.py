@@ -1,8 +1,8 @@
 # test_scattering.py
 import numpy as np
 import pytest
-from core.parameters import ExperimentParameters
-from core.sphere_difraction import calculate_S
+from core.parameters import (ExperimentParameters)
+from core.sphere_difraction import (calculate_S)
 
 @pytest.fixture
 def simple_params():
