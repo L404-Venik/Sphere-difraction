@@ -1,5 +1,4 @@
-.vscode/launch.json
 .venv/
 .local/
+.vscode/
 __pycache__/
-field_cache/
