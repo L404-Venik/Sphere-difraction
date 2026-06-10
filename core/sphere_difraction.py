@@ -6,24 +6,24 @@ import os
 import time
 
 def xi(n: int, z: complex) -> complex: # x * h1_n(x)
-    result = z * (sp.spherical_jn(n, z) + 1j * sp.spherical_yn(n, z))
-    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
-    return result
+    if np.ndim(z) == 0 and z == 0:
+        return 0.0 + 0j
+    return z * (sp.spherical_jn(n, z) + 1j * sp.spherical_yn(n, z))
 
 def xi_derivative(n: int, z: complex) -> complex: # derivative of x * h1_n(x)
-    result = z * (sp.spherical_jn(n, z, derivative=True) + 1j * sp.spherical_yn(n, z, derivative=True)) + ( sp.spherical_jn(n, z) + 1j * sp.spherical_yn(n, z))
-    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
-    return result
+    if np.ndim(z) == 0 and z == 0:
+        return 0.0 + 0j
+    return z * (sp.spherical_jn(n, z, derivative=True) + 1j * sp.spherical_yn(n, z, derivative=True)) + (sp.spherical_jn(n, z) + 1j * sp.spherical_yn(n, z))
 
-def psi(n: int, z:complex) -> complex: # x * j_n(x)
-    result = z * sp.spherical_jn(n, z)
-    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
-    return result
+def psi(n: int, z: complex) -> complex: # x * j_n(x)
+    if np.ndim(z) == 0 and z == 0:
+        return 0.0 + 0j
+    return z * sp.spherical_jn(n, z)
 
 def psi_derivative(n: int, z: complex) -> complex: # derivative of x * j_n(x)
-    result = z * sp.spherical_jn(n, z, derivative=True) + sp.spherical_jn(n, z)
-    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
-    return result
+    if np.ndim(z) == 0 and z == 0:
+        return 0.0 + 0j
+    return z * sp.spherical_jn(n, z, derivative=True) + sp.spherical_jn(n, z)
 
 def assoc_legendre_derivative(n: int, m: int, x: float) -> float:
     # Use the same identity as in the vectorized variant.
@@ -72,11 +72,11 @@ def _calculate_R_for_dielectric_center(k, eps, r, n_max = 128):
     
     numerator = np.sqrt(eps[1]) * dpsi_R1 * psi_R0 - np.sqrt(eps[0]) * psi_R1 * dpsi_R0
     denominator = np.sqrt(eps[0]) * xi(Orders, arg_R1) * dpsi_R0 - np.sqrt(eps[1]) * xi_derivative(Orders, arg_R1) * psi_R0
-    R_m =  np.divide(numerator, denominator, where=denominator != 0, out=None)
-    
+    np.divide(numerator, denominator, where=denominator != 0, out=R_m)
+
     numerator = np.sqrt(eps[0]) * dpsi_R1 * psi_R0 - np.sqrt(eps[1]) * psi_R1 * dpsi_R0
     denominator = np.sqrt(eps[1]) * xi(Orders, arg_R1) * dpsi_R0 - np.sqrt(eps[0]) * xi_derivative(Orders, arg_R1) * psi_R0
-    R_e = np.divide(numerator, denominator, where=denominator != 0, out=None)
+    np.divide(numerator, denominator, where=denominator != 0, out=R_e)
 
     return R_m, R_e
     
