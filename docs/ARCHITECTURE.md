@@ -49,14 +49,8 @@ pytest suite covering:
 - `test_special.py` — Riccati–Bessel helpers
 - `test_difraction.py` — scattering amplitude functions
 - `test_parameters.py` — `ExperimentParameters` validation
-- `test_snapshots.py` — end-to-end snapshot tests for 16 diploma example configurations
 - `test_optimization.py` — `OptimizationTask`, `SolverConfig`, `SolverResult`, `BruteForceSolver`
 - `test_search_space.py` — `SearchSpace` iteration, filtering, and size estimation
-
-## Scripts
-
-- **`scripts/generate_snapshots.py`** — re-captures `S_th`/`S_ph` snapshots into `tests/snapshots/*.npz`. Run when results have intentionally changed.
-- **`snapshot_configs.py`** (project root) — shared config defining the 16 named `ExperimentParameters` used by both the generator and the test suite.
 
 ## Dependencies
 
