@@ -4,6 +4,17 @@
 
 Physics simulation library for far-field and near-field electromagnetic scattering by multilayer spheres (Mie theory), plus an inverse problem framework for finding sphere structures that match target scattering profiles.
 
+## Physical model assumptions
+
+**Constant (non-dispersive) permittivity.** Every region's permittivity is a
+single complex number (`BodyParameters.eps`, `SearchSpace.materials` values),
+used unchanged at all wavelengths. The library carries no `ε(λ)` data and never
+checks whether a chosen `ε` is valid across the requested band — that is the
+caller's responsibility. Broadband tasks reuse one body across all wavelengths,
+so they inherit this assumption: results are physical only over a band where the
+materials' true permittivity varies negligibly. See the README's
+"Scope & limitations" for guidance.
+
 ## Core (`core/`)
 
 ### `parameters.py`
