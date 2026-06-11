@@ -70,8 +70,13 @@ def test_2d_eps_raises():
         BodyParameters(eps=[[1.5, 1.0]], r=[0.1])
 
 def test_too_few_permittivities_raises():
-    with pytest.raises(ValueError, match=re.escape("len(eps) must be at least len(r) + 1")):
+    with pytest.raises(ValueError, match=re.escape("len(eps) must equal len(r) + 1")):
         BodyParameters(eps=[1.5], r=[0.1, 0.2])
+
+def test_too_many_permittivities_raises():
+    """Extra eps are not silently dropped — they signal a miscounted body."""
+    with pytest.raises(ValueError, match=re.escape("len(eps) must equal len(r) + 1")):
+        BodyParameters(eps=[2.0, 1.5, 1.0, 1.0], r=[0.1, 0.2])
 
 # ── to_dict ───────────────────────────────────────────────────────────────────
 

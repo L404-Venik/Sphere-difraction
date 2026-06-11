@@ -33,8 +33,8 @@ class BodyParameters:
             raise ValueError("r must be a 1D sequence of radii (meters).")
         if self.eps.ndim != 1:
             raise ValueError("eps must be a 1D sequence of permittivities (can be complex).")
-        if len(self.eps) < len(self.r) + 1:
-            raise ValueError("len(eps) must be at least len(r) + 1")
+        if len(self.eps) != len(self.r) + 1:
+            raise ValueError("len(eps) must equal len(r) + 1")
         if len(self.r) == 0 or self.r[0] <= 0:
             raise ValueError("r[0] must be positive.")
         if np.any(self.r < 0):
