@@ -1,11 +1,9 @@
 # test_optimization.py — Test suite for optimization.py and brute_force_solver.py
 
-import dataclasses
-
 import numpy as np
 import pytest
 
-from core.parameters import ExperimentParameters
+from core.parameters import BodyParameters, ObservationParameters
 from core.inverse_problem.search_space import (DiscreteRange, Layer, SearchSpace)
 from core.inverse_problem.optimization import (OptimizationTask, SolverConfig, SolverResult)
 from core.inverse_problem.brute_force_solver import (BruteForceSolver)
@@ -164,13 +162,12 @@ class TestSolverConfig:
 class TestSolverResult:
 
     def _dummy(self) -> SolverResult:
-        params = ExperimentParameters(
+        body = BodyParameters(
             eps=np.array([1.0, 2.25, 1.0], dtype=np.complex128),
             r=np.array([0.01, 0.015], dtype=np.float64),
             conducting_core=True,
-            wave_length=0.03,
         )
-        return SolverResult(best=[(0.123, params)], n_evaluated=42, n_skipped=0, elapsed_seconds=1.5)
+        return SolverResult(best=[(0.123, body)], n_evaluated=42, n_skipped=0, elapsed_seconds=1.5)
 
     def test_repr_contains_best_f(self):
         assert "0.123" in repr(self._dummy())
@@ -237,14 +234,23 @@ class TestBruteForceSolverSingleWavelength:
 
     def test_best_params_type(self):
         result = quiet_solver().run(simple_space(2), single_wavelength_task())
-        for _, params in result.best:
-            assert isinstance(params, ExperimentParameters)
+        for _, body in result.best:
+            assert isinstance(body, BodyParameters)
 
-    def test_best_params_wavelength_set(self):
-        wl = 0.03
-        result = quiet_solver().run(simple_space(2), single_wavelength_task(wl))
-        for _, params in result.best:
-            assert params.wave_length == pytest.approx(wl)
+    def test_best_body_has_no_wavelength(self):
+        """The result is a body; wavelength belongs to the task, not the body."""
+        result = quiet_solver().run(simple_space(2), single_wavelength_task())
+        for _, body in result.best:
+            assert not hasattr(body, "wave_length")
+
+    def test_best_body_reproduces_f(self):
+        """The stored F can be recovered from the body via task.to_observation()."""
+        from core.sphere_difraction import calculate_S
+        task = single_wavelength_task()
+        result = quiet_solver().run(simple_space(3), task)
+        best_f, best_body = result.best[0]
+        S_th, S_ph = calculate_S(best_body, task.to_observation())
+        assert float(BACKSCATTER(S_th[0], S_ph[0], task.angles)) == pytest.approx(best_f, rel=1e-9)
 
     def test_f_value_finite(self):
         result = quiet_solver().run(simple_space(3), single_wavelength_task())
@@ -260,12 +266,14 @@ class TestBruteForceSolverSingleWavelength:
         from core.sphere_difraction import (calculate_S)
         space = simple_space(4)
         task = single_wavelength_task()
+        obs = task.to_observation()
         result = quiet_solver().run(space, task)
 
-        best_f_manual = min(
-            float(BACKSCATTER(*calculate_S(dataclasses.replace(p, wave_length=task.wavelength), M=task.M), task.angles))
-            for p in space
-        )
+        def eval_body(body):
+            S_th, S_ph = calculate_S(body, obs)
+            return float(BACKSCATTER(S_th[0], S_ph[0], task.angles))
+
+        best_f_manual = min(eval_body(p) for p in space)
         assert result.best[0][0] == pytest.approx(best_f_manual, rel=1e-6)
 
 
@@ -326,11 +334,12 @@ class TestBruteForceSolverBroadband:
         for f, _ in result.best:
             assert np.isfinite(f)
 
-    def test_broadband_ref_wavelength_is_first(self):
+    def test_broadband_best_is_body(self):
         task = self._bb_task()
         result = quiet_solver().run(simple_space(2), task)
-        for _, params in result.best:
-            assert params.wave_length == pytest.approx(float(task.wavelengths[0]))
+        for _, body in result.best:
+            assert isinstance(body, BodyParameters)
+            assert not hasattr(body, "wave_length")
 
     def test_broadband_vs_single_both_finite(self):
         space = simple_space(5)

@@ -7,9 +7,7 @@ functional, and returns the n_best lowest-scoring structures.
 
 from __future__ import annotations
 
-import dataclasses
 import time
-from typing import Callable, Union
 
 import numpy as np
 
@@ -54,22 +52,20 @@ class BruteForceSolver(Solver):
 
     def run(self, space: SearchSpace, task: OptimizationTask) -> SolverResult:
         """
-        Iterate over all candidates in ``space`` and return the best ones.
+        Iterate over all candidate bodies in ``space`` and return the best ones.
 
         Notes
         -----
         S arrays are not stored in the result to keep memory usage low.
-        To recover S for a result, call ``calculate_S(params, M=task.M)``.
-        The ``wave_length`` field of returned params is set to the first
-        (or only) wavelength in the task.
+        To recover S for a result body, call
+        ``calculate_S(body, task.to_observation())``.
         """
         config = self.config
-        wavelengths = task.wavelengths
-        M = task.M
+        observation = task.to_observation()
         angles = task.angles
         size_hint = space.size_estimate()
 
-        top: list[tuple[float, object]] = []   # (F, ExperimentParameters)
+        top: list[tuple[float, object]] = []   # (F, BodyParameters)
         n_evaluated = 0
         n_skipped = 0
         t_start = time.perf_counter()
@@ -81,9 +77,9 @@ class BruteForceSolver(Solver):
             else:
                 _print_progress_start(size_hint)
 
-        for params in iterator:
+        for body in iterator:
             try:
-                f_value = _evaluate(params, wavelengths, M, angles, task.functional, config)
+                f_value = _evaluate(body, observation, angles, task.functional, config)
             except Exception:
                 n_skipped += 1
                 continue
@@ -93,14 +89,11 @@ class BruteForceSolver(Solver):
             if config.progress and not _TQDM_AVAILABLE:
                 _print_progress_tick(n_evaluated, size_hint)
 
-            ref_wl = float(wavelengths[0])
-            ref_params = dataclasses.replace(params, wave_length=ref_wl)
-
             if len(top) < config.n_best:
-                top.append((f_value, ref_params))
+                top.append((f_value, body))
                 top.sort(key=lambda x: x[0])
             elif f_value < top[-1][0]:
-                top[-1] = (f_value, ref_params)
+                top[-1] = (f_value, body)
                 top.sort(key=lambda x: x[0])
 
         elapsed = time.perf_counter() - t_start
@@ -123,18 +116,18 @@ class BruteForceSolver(Solver):
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _evaluate(params, wavelengths, M, angles, functional, config):
-    if len(wavelengths) == 1:
-        p = dataclasses.replace(params, wave_length=float(wavelengths[0]))
-        S_th, S_ph = calculate_S(p, M=M)
-        return float(functional(S_th, S_ph, angles))
+def _evaluate(body, observation, angles, functional, config):
+    # One call covers all wavelengths: S_th, S_ph have shape (n_wavelengths, n_angles).
+    S_th, S_ph = calculate_S(body, observation)
+    n_wl = S_th.shape[0]
 
-    per_wl = np.empty(len(wavelengths), dtype=np.float64)
-    for i, wl in enumerate(wavelengths):
-        p = dataclasses.replace(params, wave_length=float(wl))
-        S_th, S_ph = calculate_S(p, M=M)
-        per_wl[i] = float(functional(S_th, S_ph, angles))
+    if n_wl == 1:
+        return float(functional(S_th[0], S_ph[0], angles))
 
+    per_wl = np.array(
+        [functional(S_th[i], S_ph[i], angles) for i in range(n_wl)],
+        dtype=np.float64,
+    )
     return config._aggregate(per_wl)
 
 

@@ -7,7 +7,7 @@ from typing import Callable, Union
 
 import numpy as np
 
-from ..parameters import ExperimentParameters
+from ..parameters import BodyParameters, ObservationParameters
 
 
 # ---------------------------------------------------------------------------
@@ -108,8 +108,17 @@ class OptimizationTask:
 
     @property
     def M(self) -> int:
-        """Number of angular samples passed to calculate_S."""
+        """Number of angular samples evaluated."""
         return len(self.angles)
+
+    def to_observation(self) -> ObservationParameters:
+        """
+        Build the ObservationParameters that drives calculate_S for this task.
+
+        Carries all wavelengths (one per row of the returned S arrays) and the
+        angle grid. The body is supplied separately by the solver.
+        """
+        return ObservationParameters(wavelengths=self.wavelengths, angles=self.angles)
 
     def __repr__(self) -> str:
         if self.is_broadband:
@@ -186,11 +195,10 @@ class SolverResult:
 
     Attributes
     ----------
-    best : list of (F, ExperimentParameters)
-        Top ``n_best`` candidates, sorted by F ascending (lowest = best).
-        Each ``ExperimentParameters`` has ``wave_length`` set to the task
-        wavelength (or the first wavelength for broadband, as reference).
-        To recover S for a result, call ``calculate_S(params, M=task.M)``.
+    best : list of (F, BodyParameters)
+        Top ``n_best`` candidate bodies, sorted by F ascending (lowest = best).
+        Bodies carry no wavelength; to recover S for a result, call
+        ``calculate_S(body, task.to_observation())``.
     n_evaluated : int
         Number of candidates actually evaluated.
     n_skipped : int
@@ -199,7 +207,7 @@ class SolverResult:
         Wall-clock time for the entire search.
     """
 
-    best: list[tuple[float, ExperimentParameters]]
+    best: list[tuple[float, BodyParameters]]
     n_evaluated: int
     n_skipped: int
     elapsed_seconds: float

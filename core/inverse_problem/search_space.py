@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Iterator, Optional, Union
 import numpy as np
 
-from ..parameters import ExperimentParameters
+from ..parameters import BodyParameters
 
 
 # ---------------------------------------------------------------------------
@@ -197,9 +197,9 @@ class SearchSpace:
     # Iteration
     # ------------------------------------------------------------------
 
-    def _iter_stack(self, stack: list[Layer]) -> Iterator[ExperimentParameters]:
+    def _iter_stack(self, stack: list[Layer]) -> Iterator[BodyParameters]:
         """
-        Yield all valid ExperimentParameters for a fixed-length stack of layers.
+        Yield all valid BodyParameters for a fixed-length stack of layers.
 
         Validity rules:
           - no two consecutive layers share the same material
@@ -247,7 +247,7 @@ class SearchSpace:
                 if sum(thicknesses_chosen) > self.max_total_thickness:
                     continue
 
-            # --- Build ExperimentParameters ---
+            # --- Build BodyParameters ---
             # r: [core_radius, core_radius + t1, core_radius + t1 + t2, ...]
             r = [self.core_radius]
             for t in thicknesses_chosen:
@@ -255,7 +255,7 @@ class SearchSpace:
 
             # eps: [core_eps, layer1_eps, layer2_eps, ..., eps_outer]
             if self.conducting_core:
-                # core eps is unused by the solver but ExperimentParameters still
+                # core eps is unused by the solver but BodyParameters still
                 # needs eps[0]. We put 1.0 as a placeholder — the solver ignores it.
                 eps = [1.0 + 0j]
             else:
@@ -264,21 +264,20 @@ class SearchSpace:
                 eps.append(self.materials[name])
             eps.append(self.eps_outer)
 
-            yield ExperimentParameters(
+            yield BodyParameters(
                 eps=np.array(eps, dtype=np.complex128),
                 r=np.array(r, dtype=np.float64),
                 conducting_core=self.conducting_core,
-                wave_length=1.0,   # placeholder — caller must set wavelength
                 label=None,
             )
 
-    def iter_candidates(self) -> Iterator[ExperimentParameters]:
+    def iter_candidates(self) -> Iterator[BodyParameters]:
         """
-        Iterate over all valid candidate structures in the search space.
+        Iterate over all valid candidate bodies in the search space.
 
-        Yields ExperimentParameters with wave_length=1.0 (placeholder).
-        The caller (OptimizationTask) is responsible for setting the correct wavelength
-        before passing to calculate_S.
+        Yields wavelength-free BodyParameters. The observation setup
+        (wavelengths and angles) lives in the OptimizationTask and is coupled
+        to each body at evaluation time via calculate_S(body, observation).
         """
         n_max = len(self.layers)
         n_min = 1 if self.up_to else n_max
@@ -286,7 +285,7 @@ class SearchSpace:
         for n in range(n_min, n_max + 1):
             yield from self._iter_stack(self.layers[:n])
 
-    def __iter__(self) -> Iterator[ExperimentParameters]:
+    def __iter__(self) -> Iterator[BodyParameters]:
         return self.iter_candidates()
 
     # ------------------------------------------------------------------

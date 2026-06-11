@@ -7,7 +7,7 @@ from core.inverse_problem.search_space import (
     Layer,
     SearchSpace,
 )
-from core.parameters import ExperimentParameters
+from core.parameters import BodyParameters
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +262,7 @@ class TestSearchSpaceConstruction:
 
 
 # ===========================================================================
-# SearchSpace — ExperimentParameters structure
+# SearchSpace — BodyParameters structure
 # ===========================================================================
 
 class TestSearchSpaceCandidateStructure:
@@ -318,15 +318,16 @@ class TestSearchSpaceCandidateStructure:
         for p in space:
             assert p.eps[0] == core_eps
 
-    def test_wave_length_is_placeholder(self):
+    def test_body_has_no_wavelength(self):
+        """Bodies are wavelength-free — the observation lives in the task."""
         space = make_space()
         for p in space:
-            assert p.wave_length == 1.0
+            assert not hasattr(p, "wave_length")
 
-    def test_experiment_parameters_type(self):
+    def test_body_parameters_type(self):
         space = make_space()
         for p in space:
-            assert isinstance(p, ExperimentParameters)
+            assert isinstance(p, BodyParameters)
 
 
 # ===========================================================================
