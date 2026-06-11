@@ -38,7 +38,7 @@ class DiscreteRange:
 
 @dataclass(frozen=True)
 class ContinuousRange:
-    """Continuous thickness interval — used by future gradient/continuous optimizers."""
+    """Continuous thickness interval (min..max). Not iterable by the discrete search."""
     min: float
     max: float
 
@@ -64,7 +64,7 @@ class Layer:
 
     thickness: float            — fixed thickness (meters)
                DiscreteRange    — grid of values to search
-               ContinuousRange  — continuous interval (future use)
+               ContinuousRange  — continuous interval (not iterable in discrete search)
 
     material:  str              — fixed material name
                list[str]        — subset of materials to search over
@@ -255,8 +255,8 @@ class SearchSpace:
 
             # eps: [core_eps, layer1_eps, layer2_eps, ..., eps_outer]
             if self.conducting_core:
-                # core eps is unused by the solver but BodyParameters still
-                # needs eps[0]. We put 1.0 as a placeholder — the solver ignores it.
+                # eps[0] is required by BodyParameters but unused for a conducting
+                # core; 1.0 is a placeholder the solver ignores.
                 eps = [1.0 + 0j]
             else:
                 eps = [self.core_material]

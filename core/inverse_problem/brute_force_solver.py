@@ -31,8 +31,7 @@ class BruteForceSolver(Solver):
     ``config.n_best`` lowest-scoring structures.
 
     For large spaces this can take minutes — enable ``config.progress``
-    to get a progress bar.  The computation is single-threaded; parallelism
-    is a future extension.
+    to get a progress bar.  The computation is single-threaded.
 
     Parameters
     ----------

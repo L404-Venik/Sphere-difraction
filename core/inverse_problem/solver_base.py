@@ -1,8 +1,7 @@
 """
 solver_base.py — Abstract base for synthesis solvers.
 
-All concrete solvers (brute-force, gradient, evolutionary, …) inherit
-from Solver and implement a single method: run().
+Concrete solvers inherit from Solver and implement a single method: run().
 """
 
 from __future__ import annotations
