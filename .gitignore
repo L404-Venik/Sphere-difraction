@@ -2,3 +2,6 @@
 .local/
 .vscode/
 __pycache__/
+
+CLAUDE.md
+.claudeignore

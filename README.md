@@ -127,3 +127,7 @@ pytest
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for modules, public signatures,
 and data flow.
+
+## Acknowledgments
+
+- **Claude** (Anthropic) — pair-programming
