@@ -72,8 +72,6 @@ best_F, best_body = result.best[0]
 
 ## Conventions
 
-- **Units are SI throughout**: radii and wavelengths in **meters**, angles in
-  **radians**.
 - `eps` is **relative permittivity** (complex allowed), one value per region,
   ordered `[core, layer_1, …, layer_N, surrounding medium]` — length
   `num_layers + 1`.
