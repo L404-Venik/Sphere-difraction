@@ -14,9 +14,6 @@ class BodyParameters:
       r: array-like of radii for layer boundaries (meters). Length = num_layers
       conducting_core: whether core is conducting (bool)
       label: optional human-readable label
-
-    The body carries no wavelength: excitation/observation lives in
-    ``ObservationParameters``. ``calculate_S(body, observation)`` couples them.
     """
     eps: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.complex128))
     r: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.float64))
@@ -24,17 +21,15 @@ class BodyParameters:
     label: Optional[str] = None
 
     def __post_init__(self):
-        # Normalize inputs
         self.eps = np.asarray(self.eps, dtype=np.complex128)
         self.r = np.asarray(self.r, dtype=np.float64)
 
-        # Basic validation with informative exceptions
         if self.r.ndim != 1:
             raise ValueError("r must be a 1D sequence of radii (meters).")
         if self.eps.ndim != 1:
             raise ValueError("eps must be a 1D sequence of permittivities (can be complex).")
-        if len(self.eps) < len(self.r) + 1:
-            raise ValueError("len(eps) must be at least len(r) + 1")
+        if len(self.eps) != len(self.r) + 1:
+            raise ValueError("len(eps) must equal len(r) + 1")
         if len(self.r) == 0 or self.r[0] <= 0:
             raise ValueError("r[0] must be positive.")
         if np.any(self.r < 0):
@@ -48,7 +43,7 @@ class BodyParameters:
         if create_from == 'r':
             return " ".join(f"r{i}={float(val):g}" for i, val in enumerate(self.r))
         if create_from == 'eps':
-            # skip core permittivity if conducting_core True (match your previous intention)
+            # conducting core's eps[0] is an unused placeholder — don't label it
             start = 1 if self.conducting_core else 0
             eps_list = [f"ε{i}={self.eps[i]}" for i in range(start, len(self.eps)-1)]
             return " ".join(eps_list) if eps_list else "-"
