@@ -37,6 +37,9 @@ All direct-problem physics. Key functions:
 ### `ploting_functions.py`
 Matplotlib wrappers for visualizing scattering patterns.
 
+### `materials.py`
+Material-library helpers. `lossy_eps(eps_r, loss_tangent)` converts a real relative permittivity and loss tangent to the complex permittivity the solver uses, with a `+i` lossy convention (`eps = eps_r·(1 + i·tanδ)`). `load_materials(path)` parses a CSV of `name, eps_r, loss_tangent` rows (extra columns like `source`/`valid_band` ignored) into the `{name: complex}` dict that `SearchSpace` consumes, validating names and ranges with line-numbered errors. The parser is regime-agnostic; an example library ships at `examples/materials.csv`.
+
 ## Inverse Problem (`core/inverse_problem/`)
 
 Framework for finding sphere structures whose scattering matches a target functional.
@@ -70,6 +73,11 @@ pytest suite covering:
 - `test_snapshots.py` — end-to-end snapshot tests for 16 diploma example configurations. Compares only the directly-computed `[0, π]` half of the legacy snapshots (the old second half was an unnegated mirror copy; the refactor computes every angle directly, so its second half is sign-flipped — see `calculate_S`).
 - `test_optimization.py` — `OptimizationTask`, `SolverConfig`, `SolverResult`, `BruteForceSolver`
 - `test_search_space.py` — `SearchSpace` iteration, filtering, and size estimation
+- `test_materials.py` — `lossy_eps`/`load_materials` parsing and validation, plus a guard pinning the `+i` lossy permittivity convention
+
+## Examples (`examples/`)
+
+- **`materials.csv`** — example material library (`name, eps_r, loss_tangent`, with `source`/`valid_band` provenance columns) for `load_materials`. A starting point users can copy and edit without writing code.
 
 ## Scripts
 

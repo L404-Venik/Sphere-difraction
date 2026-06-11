@@ -1,0 +1,19 @@
+name,eps_r,loss_tangent,source,valid_band
+polystyrene_foam,1.05,0.0001,von Hippel 1954,0.1-10 GHz
+ptfe,2.10,0.0002,von Hippel 1954,0.1-10 GHz
+paraffin,2.25,0.0002,von Hippel 1954,0.1-10 GHz
+polypropylene,2.20,0.0003,Pozar Microwave Engineering,0.1-10 GHz
+polyethylene,2.25,0.0004,von Hippel 1954,0.1-10 GHz
+rexolite,2.53,0.0006,manufacturer datasheet,0.1-10 GHz
+polystyrene,2.55,0.0002,von Hippel 1954,0.1-10 GHz
+pvc,2.90,0.0140,Pozar Microwave Engineering,0.1-3 GHz
+nylon,3.10,0.0120,von Hippel 1954,0.1-3 GHz
+fused_silica,3.78,0.0001,von Hippel 1954,0.1-10 GHz
+fr4,4.40,0.0200,manufacturer datasheet,0.1-3 GHz
+glass_pyrex,4.60,0.0054,von Hippel 1954,0.1-3 GHz
+mica,5.40,0.0003,von Hippel 1954,0.1-10 GHz
+beryllia,6.50,0.0004,von Hippel 1954,0.1-10 GHz
+alumina_96,9.40,0.0006,manufacturer datasheet,0.1-10 GHz
+alumina_995,9.80,0.0001,manufacturer datasheet,0.1-10 GHz
+silicon_hr,11.70,0.0010,Pozar Microwave Engineering,0.1-10 GHz
+gallium_arsenide,12.90,0.0020,Pozar Microwave Engineering,0.1-10 GHz

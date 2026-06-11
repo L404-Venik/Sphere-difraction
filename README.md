@@ -70,6 +70,20 @@ result = BruteForceSolver(SolverConfig(n_best=5, progress=False)).run(space, tas
 best_F, best_body = result.best[0]
 ```
 
+## Materials from a file
+
+`core.materials.load_materials` reads a `{name: permittivity}` library from a CSV
+of `name, eps_r, loss_tangent`, so materials can be edited without code:
+
+```python
+from core.materials import load_materials
+
+materials = load_materials("examples/materials.csv")
+space = SearchSpace(core_radius=0.01, layers=[...], materials=materials)
+```
+
+A starter library ships at [examples/materials.csv](examples/materials.csv).
+
 ## Conventions
 
 - `eps` is **relative permittivity** (complex allowed), one value per region,
