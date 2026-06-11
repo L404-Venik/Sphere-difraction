@@ -1,29 +1,26 @@
 from dataclasses import dataclass, field
-from typing import Sequence, Optional, Tuple
+from typing import Optional
 import numpy as np
 import scipy.constants as const
 c = const.speed_of_light
 
 @dataclass
-class ExperimentParameters:
+class BodyParameters:
     """
-    Holds parameters describing a layered spherical experiment.
+    Describes the physical layered sphere — invariant across wavelength.
 
     Fields:
       eps: array-like of relative permittivities (complex allowed). Length = num_layers + 1
       r: array-like of radii for layer boundaries (meters). Length = num_layers
       conducting_core: whether core is conducting (bool)
-      wave_length: wavelength in meters (float)
       label: optional human-readable label
 
-    Derived properties:
-      frequency_hz, frequency_ghz: wave frequency
-      k: wave number (rad / m)
+    The body carries no wavelength: excitation/observation lives in
+    ``ObservationParameters``. ``calculate_S(body, observation)`` couples them.
     """
     eps: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.complex128))
     r: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.float64))
     conducting_core: bool = False
-    wave_length: float = 1.0  # meters
     label: Optional[str] = None
 
     def __post_init__(self):
@@ -44,21 +41,6 @@ class ExperimentParameters:
             raise ValueError("All radii must be non-negative.")
         if np.any(np.diff(self.r) < 0):
             raise ValueError("Radii must be in non-decreasing order (innermost -> outermost).")
-        if self.wave_length <= 0:
-            raise ValueError("wave_length must be > 0 (meters).")
-
-    @property
-    def frequency_hz(self) -> float:
-        return c / self.wave_length
-
-    @property
-    def frequency_ghz(self) -> float:
-        return self.frequency_hz / 1e9
-
-    @property
-    def k(self) -> float:
-        """Wave number in radians per meter."""
-        return 2.0 * np.pi / self.wave_length
 
     def create_label(self, create_from: Optional[str] = None) -> str:
         if self.label:
@@ -77,13 +59,62 @@ class ExperimentParameters:
             "eps": self.eps.tolist(),
             "r": self.r.tolist(),
             "conducting_core": bool(self.conducting_core),
-            "wave_length": float(self.wave_length),
             "label": self.label
         }
 
     def __repr__(self) -> str:
-        return (f"ExperimentParameters(label={self.label!r}, num_layers={len(self.r)}, "
-                f"wave_length={self.wave_length} m, freq={self.frequency_ghz:.3f} GHz)")
+        return (f"BodyParameters(label={self.label!r}, num_layers={len(self.r)}, "
+                f"conducting_core={self.conducting_core})")
+
+
+@dataclass
+class ObservationParameters:
+    """
+    Describes the observation/excitation setup — independent of the body.
+
+    Fields:
+      wavelengths: one or more wavelengths in meters. A scalar is accepted and
+                   stored as a 1-element array.
+      angles: 1D array of angles in radians at which to evaluate S.
+
+    Derived properties:
+      k: wave number array (rad / m), shape == wavelengths.shape
+      frequency_hz, frequency_ghz: wave frequencies (arrays)
+    """
+    wavelengths: np.ndarray = field(default_factory=lambda: np.array([1.0], dtype=np.float64))
+    angles: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.float64))
+
+    def __post_init__(self):
+        wl = np.asarray(self.wavelengths, dtype=np.float64)
+        if wl.ndim == 0:
+            wl = wl.reshape(1)
+        if wl.ndim != 1 or len(wl) == 0:
+            raise ValueError("wavelengths must be a scalar or a non-empty 1-D array.")
+        if np.any(wl <= 0):
+            raise ValueError("All wavelengths must be > 0 (meters).")
+        self.wavelengths = wl
+
+        angles = np.asarray(self.angles, dtype=np.float64)
+        if angles.ndim != 1 or len(angles) == 0:
+            raise ValueError("angles must be a non-empty 1-D array (radians).")
+        self.angles = angles
+
+    @property
+    def k(self) -> np.ndarray:
+        """Wave numbers in radians per meter, one per wavelength."""
+        return 2.0 * np.pi / self.wavelengths
+
+    @property
+    def frequency_hz(self) -> np.ndarray:
+        return c / self.wavelengths
+
+    @property
+    def frequency_ghz(self) -> np.ndarray:
+        return self.frequency_hz / 1e9
+
+    def __repr__(self) -> str:
+        return (f"ObservationParameters(n_wavelengths={len(self.wavelengths)}, "
+                f"n_angles={len(self.angles)})")
 
 
 @dataclass
@@ -97,20 +128,20 @@ class PlotingParameters:
     description_pos: tuple
 
     angle_limits: tuple
-    
-    experiments: ExperimentParameters
+
+    experiments: BodyParameters
     polarization: str
 
-    def __init__(self, Experiments, 
-                 Title = None, 
-                 LegendTitle = None, 
-                 ExpDescr = None, 
-                 DescriptionPos = [0.5, 0.1], 
+    def __init__(self, Experiments,
+                 Title = None,
+                 LegendTitle = None,
+                 ExpDescr = None,
+                 DescriptionPos = [0.5, 0.1],
                  FontSize = 8,
                  ShowTicklabels = False,
                  Polarization = None,
                  AngleLimits = None):
-        
+
         self.experiments = Experiments
         self.font_size = FontSize
 
@@ -123,9 +154,9 @@ class PlotingParameters:
         self.experiment_description = ExpDescr
 
         self.show_ticklabels = ShowTicklabels
-        
+
         if Polarization is not None:
             assert Polarization == 'VV' or Polarization == 'HH', 'polarization could be only VV or HH'
         self.polarization = Polarization
-        
+
         self.angle_limits = AngleLimits

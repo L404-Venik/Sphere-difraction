@@ -1,8 +1,9 @@
-from .parameters import ExperimentParameters
+from .parameters import BodyParameters, ObservationParameters
 from .sphere_difraction import calculate_S, calculate_electric_field_far, calculate_coefficients
 
 __all__ = [
-	"ExperimentParameters",
+	"BodyParameters",
+	"ObservationParameters",
 	"calculate_S",
 	"calculate_electric_field_far",
 	"calculate_coefficients",

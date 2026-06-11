@@ -12,8 +12,9 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 import numpy as np
+from core.parameters import ObservationParameters
 from core.sphere_difraction import calculate_S
-from snapshot_configs import known_cases
+from snapshot_configs import known_cases, SNAPSHOT_ANGLES
 
 SNAPSHOT_DIR = os.path.join(PROJECT_ROOT, "tests", "snapshots")
 
@@ -21,10 +22,11 @@ SNAPSHOT_DIR = os.path.join(PROJECT_ROOT, "tests", "snapshots")
 def main():
     os.makedirs(SNAPSHOT_DIR, exist_ok=True)
     cases = known_cases()
-    for name, experiment in cases:
-        S_th, S_ph = calculate_S(experiment)
+    for name, body, wavelength in cases:
+        observation = ObservationParameters(wavelengths=wavelength, angles=SNAPSHOT_ANGLES)
+        S_th, S_ph = calculate_S(body, observation)
         path = os.path.join(SNAPSHOT_DIR, f"{name}.npz")
-        np.savez(path, S_th=S_th, S_ph=S_ph)
+        np.savez(path, S_th=S_th[0], S_ph=S_ph[0])
         print(f"  saved {name}.npz")
     print(f"\nDone — {len(cases)} snapshots written to {SNAPSHOT_DIR}")
 
