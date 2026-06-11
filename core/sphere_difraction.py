@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.special as sp
-from .parameters import ExperimentParameters
+from .parameters import BodyParameters, ObservationParameters
 import hashlib
 import os
 import time
@@ -83,15 +83,15 @@ def _calculate_R_for_dielectric_center(k, eps, r, n_max = 128):
 
 
 def calculate_coefficients(
-        params: ExperimentParameters,
+        body: BodyParameters,
+        k: float,
         n_max: int = 128,
         threshold: float = 1e-50,
     ) -> tuple[np.ndarray, np.ndarray, int]:
-    
-    k = params.k
-    eps = params.eps
-    r = params.r
-    conducting_core = params.conducting_core
+
+    eps = body.eps
+    r = body.r
+    conducting_core = body.conducting_core
 
     layers_number = len(r)
     D_e = np.zeros(n_max, dtype=np.complex128)
@@ -158,120 +158,141 @@ def calculate_coefficients(
 
     return D_e, D_m, converged_at
 
-def calculate_S(params: ExperimentParameters, M = 3600):
+def calculate_S(
+        body: BodyParameters,
+        observation: ObservationParameters,
+        n_max: int = 128,
+    ) -> tuple[np.ndarray, np.ndarray]:
     """
     Compute the far-field scattering amplitude functions S_theta and S_phi
-    for M evenly spaced angles over [0, 2pi].
+    at the wavelengths and angles described by ``observation``.
 
-    Angles 0 and pi are handled separately via asymptotic formulas 
-    because the general term is singular there.
+    The angular dependence is fully vectorized: there is no Python loop over
+    angles. The wavelength loop is unavoidable (the wave number, and hence the
+    Mie coefficients, change per wavelength), but the angle-dependent Legendre
+    terms are computed once and reused across wavelengths.
+
+    Angles theta = 0 (forward) and theta = pi (backward) are handled via
+    asymptotic formulas because the general term is singular there. Detection
+    is automatic (boolean masks) and invisible to the caller.
 
     Parameters
     ----------
-    params : ExperimentParameters
-        Sphere and wave parameters.
-    M : int
-        Number of angular samples. Must be positive.
+    body : BodyParameters
+        The physical layered sphere.
+    observation : ObservationParameters
+        Wavelengths and angles to evaluate.
+    n_max : int
+        Maximum series order (passed through to ``calculate_coefficients``).
 
     Returns
     -------
-    S_th, S_ph : ndarray of shape (M,), dtype complex128
-        Scattering amplitudes at angles m * 2pi/M for m in 0..M-1.
+    S_th, S_ph : ndarray of shape (n_wavelengths, n_angles), dtype complex128
+        Scattering amplitudes. For a single-wavelength observation index
+        ``[0, :]`` for the angular profile.
     """
-    assert M > 0, 'M has to be positive integer'
+    angles = observation.angles
+    wavelengths = observation.wavelengths
+    n_wl = len(wavelengths)
+    n_ang = len(angles)
 
-    D_e, D_m, N = calculate_coefficients(params)
+    cos_t = np.cos(angles)
+    sin_t = np.sin(angles)
 
-    n = np.arange(1, N)
-    i_pow  = (-1j) ** n               # (-i)^n
-    n_pair = n * (n + 1) / 2          # n(n+1)/2 
-    
-    # Number of unique angles to compute before mirroring.
-    # The series is symmetric: S(2pi - theta) = S(theta), so we only
-    # compute the first half and reflect.
-    n_unique = (M + 1) // 2
-    # If M is even, angle=pi lands exactly on a sample and needs special treatment.
-    has_pi   = (M % 2 == 0)
-    n_compute = n_unique + has_pi
+    fwd_mask = np.isclose(angles, 0.0)
+    bck_mask = np.isclose(angles, np.pi)
+    gen_mask = ~fwd_mask & ~bck_mask
 
-    S_th = np.zeros(n_compute, dtype=np.complex128)
-    S_ph = np.zeros(n_compute, dtype=np.complex128)
+    # --- Legendre terms: angle-dependent only, computed once for all wavelengths ---
+    # first[n, g] = P_n^1(cos θ_g) / sin θ_g ; second[n, g] = (dP_n^1/dx) · sin θ_g
+    orders = np.arange(n_max)
+    if np.any(gen_mask):
+        ct = cos_t[gen_mask]                              # (G,)
+        st = sin_t[gen_mask]
+        P = sp.lpmv(1, orders[:, None], ct[None, :])      # (n_max, G)
+        dP = assoc_legendre_derivative_vectorized(orders[:, None], 1, ct[None, :])
+        first_full = np.where(np.isfinite(P), P, 0.0) / st[None, :]
+        second_full = np.where(np.isfinite(dP), dP, 0.0) * st[None, :]
+        first_full = np.where(np.isfinite(first_full), first_full, 0.0)
+        second_full = np.where(np.isfinite(second_full), second_full, 0.0)
+    else:
+        first_full = second_full = None
 
-    # --- theta = 0 (forward scattering): use asymptotic limit ---
-    S_ph[0] = np.sum(i_pow * n_pair * (D_m[1:N] + D_e[1:N]))
-    S_th[0] = -S_ph[0]
+    S_th = np.zeros((n_wl, n_ang), dtype=np.complex128)
+    S_ph = np.zeros((n_wl, n_ang), dtype=np.complex128)
 
-    theta_step = 2 * np.pi / M
-    for m in range(1, n_unique):
-        theta = m * theta_step
-        cos_th = np.cos(theta)
-        sin_th = np.sin(theta)
+    for wi, k in enumerate(observation.k):
+        D_e, D_m, N = calculate_coefficients(body, k, n_max=n_max)
 
-        first_terms = sp.lpmv(1, np.arange(N), cos_th)
-        if (not np.isclose(sin_th, 0.0)):
-            first_terms /= sin_th
-        second_terms = assoc_legendre_derivative(np.arange(N), 1, cos_th) * sin_th
-        
-        # Replace invalid entries
-        first_terms = np.where(np.isfinite(first_terms), first_terms, 0.0)
-        second_terms = np.where(np.isfinite(second_terms), second_terms, 0.0)
+        n = np.arange(1, N)
+        i_pow = (-1j) ** n                  # (-i)^n
+        n_pair = n * (n + 1) / 2            # n(n+1)/2
 
-        S_th[m] += np.sum(i_pow * (D_m[1:N] * first_terms[1:N] - D_e[1:N] * second_terms[1:N]))
-        S_ph[m] += np.sum(i_pow * (D_m[1:N] * second_terms[1:N] - D_e[1:N] * first_terms[1:N]))
+        # --- theta = 0 (forward scattering): asymptotic limit ---
+        if np.any(fwd_mask):
+            s_ph0 = np.sum(i_pow * n_pair * (D_m[1:N] + D_e[1:N]))
+            S_ph[wi, fwd_mask] = s_ph0
+            S_th[wi, fwd_mask] = -s_ph0
 
-    # --- theta = pi (backscattering): use asymptotic limit ---
-    if has_pi:
-        alternating = (-1) ** n
-        S_th[-1] = np.sum(i_pow * alternating * n_pair * (D_e[1:N] - D_m[1:N]))
-        S_ph[-1] = S_th[-1]
-        
-    # --- Mirror over theta = pi to fill the second half ---
-    # Exclude endpoints (0 and pi) from the reflection to avoid duplication.
-    interior_th = S_th[1:-1] if has_pi else S_th[1:]
-    interior_ph = S_ph[1:-1] if has_pi else S_ph[1:]
-    S_th = np.concatenate([S_th, interior_th[::-1]])
-    S_ph = np.concatenate([S_ph, interior_ph[::-1]])
+        # --- theta = pi (backscattering): asymptotic limit ---
+        if np.any(bck_mask):
+            alternating = (-1) ** n
+            s_th_pi = np.sum(i_pow * alternating * n_pair * (D_e[1:N] - D_m[1:N]))
+            S_th[wi, bck_mask] = s_th_pi
+            S_ph[wi, bck_mask] = s_th_pi
+
+        # --- general angles: vectorized matmul over the series ---
+        if first_full is not None:
+            first = first_full[1:N]         # (N-1, G)
+            second = second_full[1:N]
+            cm = i_pow * D_m[1:N]           # (N-1,)
+            ce = i_pow * D_e[1:N]
+            S_th[wi, gen_mask] = cm @ first - ce @ second
+            S_ph[wi, gen_mask] = cm @ second - ce @ first
 
     return S_th, S_ph
 
 
-def calculate_electric_field_far(ExperimentParam: ExperimentParameters, phi = np.pi * 0) -> tuple[list[complex], list[complex]]:
-    k = ExperimentParam.k
-    
-    S_th, S_ph = calculate_S(ExperimentParam)
-    
-    x = ExperimentParam.r[-1] * 10
+def calculate_electric_field_far(
+        body: BodyParameters,
+        observation: ObservationParameters,
+        phi = np.pi * 0,
+    ) -> tuple[np.ndarray, np.ndarray]:
+    k = observation.k[:, None]                  # (n_wl, 1)
+
+    S_th, S_ph = calculate_S(body, observation)  # (n_wl, n_ang)
+
+    x = body.r[-1] * 10
     cos_phi = np.cos(phi)
     sin_phi = np.sin(phi)
 
     E_theta = S_th * k**2 * (np.exp(1j * k * x) * cos_phi / (k * x))
     E_phi =   S_ph * k**2 * (np.exp(1j * k * x) * sin_phi / (k * x))
-    
+
     return E_theta, E_phi
 
 
 # deprecated, better use the next one
-def calculate_electric_field_close(ExperimentParam: ExperimentParameters, limits:list[float]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
-    k = ExperimentParam.k
+def calculate_electric_field_close(body: BodyParameters, k: float, limits:list[float]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
     phi = 0
 
     N_x = N_y = 300
     x_min, x_max, y_min, y_max = limits
     x_values = np.linspace(x_min, x_max, N_x)
     y_values = np.linspace(y_min, y_max, N_y)
-    
+
     vE_theta = np.zeros((N_x,N_y),dtype=np.complex128)
     vE_phi = np.zeros((N_x,N_y),dtype=np.complex128)
     vE_r = np.zeros((N_x,N_y),dtype=np.complex128)
-    
-    vD_e, vD_m, N = calculate_coefficients(ExperimentParam)
+
+    vD_e, vD_m, N = calculate_coefficients(body, k)
 
     cos_phi = np.cos(phi)
 
     for i, x in enumerate(x_values):
         for j, y in enumerate(y_values):
             R = np.sqrt(x**2 + y**2)
-            if R < ExperimentParam.r[-1] or x == 0:
+            if R < body.r[-1] or x == 0:
                 continue
 
             theta = np.arctan2(y, x)
@@ -301,7 +322,7 @@ def calculate_electric_field_close(ExperimentParam: ExperimentParameters, limits
     return vE_r, vE_theta, vE_phi
 
 
-def calculate_electric_field_close_vectorized(ExperimentParam: ExperimentParameters, coordinates_limits:list[float])-> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
+def calculate_electric_field_close_vectorized(body: BodyParameters, k: float, coordinates_limits:list[float])-> tuple[np.ndarray, np.ndarray, np.ndarray]:  # arrays of complex128 elements
         
     def load_or_compute_field_terms(cos_th: np.ndarray, kR: np.ndarray, N: int):
 
@@ -343,7 +364,6 @@ def calculate_electric_field_close_vectorized(ExperimentParam: ExperimentParamet
         return Pnm, dPnm, hankel, hankel_deriv
 
     start = time.time()
-    k = ExperimentParam.k
     phi = 0
 
     cos_phi = np.cos(phi)
@@ -354,13 +374,13 @@ def calculate_electric_field_close_vectorized(ExperimentParam: ExperimentParamet
     y_values = np.linspace(y_min, y_max, N_y)
 
     start_coefficient = time.time()
-    vD_e, vD_m, N = calculate_coefficients(ExperimentParam)
+    vD_e, vD_m, N = calculate_coefficients(body, k)
     end_coefficients = time.time()
 
     X, Y = np.meshgrid(x_values, y_values, indexing='ij')
     R = np.sqrt(X**2 + Y**2)
     theta = np.arctan2(Y, X)
-    mask = (R >= ExperimentParam.r[-1]) & (X != 0)
+    mask = (R >= body.r[-1]) & (X != 0)
 
     E_r = np.zeros_like(R, dtype=np.complex128)
     E_theta = np.zeros_like(R, dtype=np.complex128)
